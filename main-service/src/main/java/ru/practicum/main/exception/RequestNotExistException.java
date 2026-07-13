@@ -1,0 +1,7 @@
+package ru.practicum.main.exception;
+
+public class RequestNotExistException extends RuntimeException {
+    public RequestNotExistException(String message) {
+        super(message);
+    }
+}
