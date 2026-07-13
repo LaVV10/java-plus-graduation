@@ -2,7 +2,6 @@ package ru.practicum.stats.client;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
@@ -14,14 +13,27 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * HTTP-клиент сервиса статистики.
+ * <p>
+ * Адрес stats-server определяется через службу обнаружения (Eureka):
+ * вместо фиксированного хоста используется имя зарегистрированного сервиса
+ * {@code stats-server}, которое резолвится балансировщиком благодаря
+ * {@code @LoadBalanced}-аннотации на бине {@link RestTemplate} в main-service.
+ */
 @Service
 public class StatsClient {
+    /**
+     * Имя сервиса статистики в реестре Eureka.
+     */
+    private static final String STATS_SERVER_SERVICE_ID = "stats-server";
+
     private final String serverUrl;
     private final RestTemplate restTemplate;
 
-    public StatsClient(@Value("${stats-server.url}") String serverUrl, RestTemplate restTemplate) {
-        this.serverUrl = serverUrl;
+    public StatsClient(RestTemplate restTemplate) {
         this.restTemplate = restTemplate;
+        this.serverUrl = "http://" + STATS_SERVER_SERVICE_ID;
     }
 
     public void addStats(EndpointHitDto endpointHitDto) {

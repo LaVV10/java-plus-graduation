@@ -1,6 +1,56 @@
-version: '3.1'
-
 services:
+  # ─── Служба обнаружения (Eureka) ───────────────────────────────────────
+  discovery-server:
+    build: ./infra/discovery-server
+    image: discovery-server-image
+    container_name: discovery-server
+    ports:
+      - "8761:8761"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8761/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ─── Сервер конфигурации (native-профиль, конфиги в config_repo) ───────
+  config-server:
+    build: ./infra/config-server
+    image: config-server-image
+    container_name: config-server
+    depends_on:
+      discovery-server:
+        condition: service_healthy
+    ports:
+      - "8888:8888"
+    environment:
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://discovery-server:8761/eureka
+    healthcheck:
+      # config-server отдаёт JSON на запрос своего имени приложения
+      test: ["CMD", "wget", "-qO-", "http://localhost:8888/config-server/default"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 20s
+
+  # ─── API-шлюз (порт 8080, маршруты к main-service) ────────────────────
+  gateway-server:
+    build: ./infra/gateway-server
+    image: gateway-server-image
+    container_name: gateway-server
+    depends_on:
+      discovery-server:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
+    ports:
+      # Внутри контейнера gateway слушает 8080 (по ТЗ). На хост-порт 8081,
+      # т.к. 8080 занят сторонним процессом AgentService.exe.
+      - "8081:8080"
+    environment:
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://discovery-server:8761/eureka
+      - CONFIG_SERVER_URL=http://config-server:8888
+
+  # ─── БД статистики ────────────────────────────────────────────────────
   stats-db:
     image: postgres:15.1-alpine
     container_name: EWM-stats-db
@@ -18,27 +68,28 @@ services:
       timeout: 5s
       retries: 5
 
+  # ─── Сервис статистики (порт случайный, регистрируется в Eureka) ──────
   stats-server:
     restart: on-failure
     build: ./ewm-stats/stats-server
     image: stats-server-image
     container_name: ewm-stats-server
     depends_on:
+      discovery-server:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
       stats-db:
         condition: service_healthy
-    ports:
-      - "9090:9090"
     environment:
-      - DB_NAME=stats
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - DB_HOST=stats-db
-      - DB_PORT=5432
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://discovery-server:8761/eureka
+      - CONFIG_SERVER_URL=http://config-server:8888
       - SPRING_DATASOURCE_URL=jdbc:postgresql://stats-db:5432/stats
       - SPRING_DATASOURCE_USERNAME=postgres
       - SPRING_DATASOURCE_PASSWORD=postgres
       - SPRING_PROFILES_ACTIVE=docker
 
+  # ─── БД основного сервиса ─────────────────────────────────────────────
   ewm-db:
     image: postgres:15.1-alpine
     container_name: EWM-server-db
@@ -56,33 +107,27 @@ services:
       timeout: 5s
       retries: 5
 
+  # ─── Основной сервис (порт случайный, регистрируется в Eureka) ────────
   ewm-service:
-    build: ./main-service
+    build: ./core/main-service
     image: ewm-service-image
     container_name: ewm-service
     depends_on:
+      discovery-server:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
       ewm-db:
         condition: service_healthy
       stats-server:
         condition: service_started
-    ports:
-      - "8080:8080"
     environment:
-      - DB_NAME=ewm-server
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - DB_HOST=ewm-db
-      - DB_PORT=5432
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://discovery-server:8761/eureka
+      - CONFIG_SERVER_URL=http://config-server:8888
       - SPRING_DATASOURCE_URL=jdbc:postgresql://ewm-db:5432/ewm-server
       - SPRING_DATASOURCE_USERNAME=postgres
       - SPRING_DATASOURCE_PASSWORD=postgres
-      - STATS_SERVER_URL=http://ewm-stats-server:9090
       - SPRING_PROFILES_ACTIVE=docker
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
 
 volumes:
   stats-db-data:

@@ -1,0 +1,18 @@
+# Конфигурация gateway-server, раздаваемая через Config Server.
+server:
+  port: 8080
+
+spring:
+  cloud:
+    gateway:
+      mvc:
+        # Автоматическое создание маршрутов по имени сервиса из реестра Eureka
+        discovery:
+          locator:
+            enabled: true
+        # Явный маршрут всего трафика на main-service (все эндпоинты принадлежат ему)
+        routes:
+          - id: main-service
+            uri: lb://main-service
+            predicates:
+              - Path=/**
