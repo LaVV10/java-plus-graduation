@@ -1,0 +1,22 @@
+server:
+  # Фиксированный порт: клиенты обращаются к config-server по прямому URL,
+  # т.к. discovery-based поиск config-server ненадёжен на ранней фазе загрузки
+  # (config-server может ещё не зарегистрироваться в Eureka к старту клиентов).
+  port: 8888
+
+spring:
+  application:
+    name: config-server
+  profiles:
+    active: native
+  cloud:
+    config:
+      server:
+        native:
+          # Централизованные конфиги лежат отдельно от собственного конфига сервера
+          search-locations: classpath:/config_repo
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka
