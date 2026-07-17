@@ -74,36 +74,37 @@ spring:
             uri: lb://user-service
             predicates:
               - Path=/admin/users/**
-          # ─── feature-service (categories + compilations) ─────────────────
+          # ─── category-service (categories) ───────────────────────────────
           - id: category-admin
-            uri: lb://feature-service
+            uri: lb://category-service
             predicates:
               - Path=/admin/categories
           - id: category-admin-sub
-            uri: lb://feature-service
+            uri: lb://category-service
             predicates:
               - Path=/admin/categories/**
           - id: category-public
-            uri: lb://feature-service
+            uri: lb://category-service
             predicates:
               - Path=/categories
           - id: category-public-sub
-            uri: lb://feature-service
+            uri: lb://category-service
             predicates:
               - Path=/categories/**
+          # ─── compilation-service (compilations) ──────────────────────────
           - id: compilation-admin
-            uri: lb://feature-service
+            uri: lb://compilation-service
             predicates:
               - Path=/admin/compilations
           - id: compilation-admin-sub
-            uri: lb://feature-service
+            uri: lb://compilation-service
             predicates:
               - Path=/admin/compilations/**
           - id: compilation-public
-            uri: lb://feature-service
+            uri: lb://compilation-service
             predicates:
               - Path=/compilations
           - id: compilation-public-sub
-            uri: lb://feature-service
+            uri: lb://compilation-service
             predicates:
               - Path=/compilations/**

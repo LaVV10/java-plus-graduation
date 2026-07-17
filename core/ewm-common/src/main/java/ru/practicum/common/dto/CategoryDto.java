@@ -8,7 +8,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 /**
- * Категория события. Кросс-сервисный контракт: feature-service (владелец) ← event-service.
+ * Категория события. Кросс-сервисный контракт: category-service (владелец) ← event-service.
  */
 @Getter
 @Setter

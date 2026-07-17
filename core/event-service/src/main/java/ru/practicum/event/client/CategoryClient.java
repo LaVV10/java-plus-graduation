@@ -10,13 +10,13 @@ import ru.practicum.event.client.fallback.CategoryClientFallback;
 import java.util.List;
 
 /**
- * Feign-клиент к feature-service для домена event-service.
+ * Feign-клиент к category-service для домена event-service.
  * Получает данные категорий для обогащения EventFullDto/EventShortDto.
  *
- * Fallback @{@link CategoryClientFallback}: при недоступности feature-service категория
+ * Fallback @{@link CategoryClientFallback}: при недоступности category-service категория
  * возвращается как null (в DTO поле category будет отсутствовать), а список — пустой.
  */
-@FeignClient(name = "feature-service", fallback = CategoryClientFallback.class)
+@FeignClient(name = "category-service", fallback = CategoryClientFallback.class)
 public interface CategoryClient {
 
 	@GetMapping("/internal/categories/{id}")

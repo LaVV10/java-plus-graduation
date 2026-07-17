@@ -150,10 +150,30 @@ services:
       - SPRING_DATASOURCE_PASSWORD=postgres
       - SPRING_PROFILES_ACTIVE=docker
 
-  feature-service:
-    build: ./core/feature-service
-    image: feature-service-image
-    container_name: feature-service
+  category-service:
+    build: ./core/category-service
+    image: category-service-image
+    container_name: category-service
+    restart: on-failure
+    depends_on:
+      discovery-server:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
+      ewm-db:
+        condition: service_healthy
+    environment:
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://discovery-server:8761/eureka
+      - CONFIG_SERVER_URL=http://config-server:8888
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://ewm-db:5432/ewm-server
+      - SPRING_DATASOURCE_USERNAME=postgres
+      - SPRING_DATASOURCE_PASSWORD=postgres
+      - SPRING_PROFILES_ACTIVE=docker
+
+  compilation-service:
+    build: ./core/compilation-service
+    image: compilation-service-image
+    container_name: compilation-service
     restart: on-failure
     depends_on:
       discovery-server:

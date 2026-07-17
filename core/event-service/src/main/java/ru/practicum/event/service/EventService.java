@@ -44,6 +44,6 @@ public interface EventService {
 	/** Внутренний доступ для request-service: снимок события. */
 	EventShortInfoDto getEventInfo(Long eventId);
 
-	/** Внутренний доступ для feature-service: краткие данные событий по списку id (для подборок). */
+	/** Внутренний доступ для compilation-service: краткие данные событий по списку id (для подборок). */
 	List<EventShortDto> getEventShortDtosByIds(List<Long> eventIds);
 }

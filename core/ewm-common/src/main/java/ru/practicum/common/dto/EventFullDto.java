@@ -14,7 +14,7 @@ import java.time.LocalDateTime;
 
 /**
  * Полный DTO события. Возвращается наружу через gateway, а также является внутренним
- * контрактом event-service ← feature-service (для подборок берётся EventShortDto,
+ * контрактом event-service ← compilation-service (для подборок берётся EventShortDto,
  * но DTO события принадлежат event-service и живут в общем модуле).
  */
 @NoArgsConstructor

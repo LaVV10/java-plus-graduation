@@ -12,9 +12,9 @@ import org.springframework.web.client.RestTemplate;
 /**
  * Микросервис мероприятий (events + locations) — центральный домен.
  *
- * Исходящие Feign-вызовы: feature-service (категории), user-service (инициаторы),
+ * Исходящие Feign-вызовы: category-service (категории), user-service (инициаторы),
  * request-service (подсчёт подтверждённых заявок), stats-server (просмотры, через stats-client).
- * Экспортирует внутреннее API /internal/events для request-service и feature-service.
+ * Экспортирует внутреннее API /internal/events для request-service и compilation-service.
  *
  * ComponentScan по ru.practicum нужен, чтобы подхватить StatsClient (лежит в ru.practicum.stats.client).
  * RestTemplate @{@link LoadBalanced} нужен stats-client (он построен на RestTemplate).

@@ -12,7 +12,7 @@ import ru.practicum.common.Constants;
 import java.time.LocalDateTime;
 
 /**
- * Краткий DTO события. Кросс-сервисный контракт: event-service (владелец) ← feature-service
+ * Краткий DTO события. Кросс-сервисный контракт: event-service (владелец) ← compilation-service
  * (для подборок compilations). Поля category/initiator — вложенные общие DTO.
  */
 @Getter

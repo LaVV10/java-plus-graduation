@@ -20,7 +20,8 @@
 		<module>event-service</module>
 		<module>request-service</module>
 		<module>user-service</module>
-		<module>feature-service</module>
+		<module>category-service</module>
+		<module>compilation-service</module>
 		<module>main-service</module>
 	</modules>
 

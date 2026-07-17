@@ -18,8 +18,8 @@ import java.util.List;
  *
  * Контракт:
  *   GET /internal/events/{id}/info                  -> EventShortInfoDto (снимок для request-service)
- *   GET /internal/events/exists-by-category?categoryId= -> Boolean (для feature-service deleteCategory)
- *   GET /internal/events?ids=1,2                    -> List<EventShortDto> (для feature-service compilations)
+ *   GET /internal/events/exists-by-category?categoryId= -> Boolean (для category-service deleteCategory)
+ *   GET /internal/events?ids=1,2                    -> List<EventShortDto> (для compilation-service compilations)
  */
 @RestController
 @RequestMapping("/internal/events")

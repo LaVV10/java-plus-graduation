@@ -8,7 +8,7 @@ import ru.practicum.event.client.CategoryClient;
 import java.util.List;
 
 /**
- * Fallback для {@link CategoryClient}: при недоступности feature-service категория = null,
+ * Fallback для {@link CategoryClient}: при недоступности category-service категория = null,
  * список = пустой. Публичная выдача событий продолжает работать без category.
  */
 @Slf4j
@@ -17,13 +17,13 @@ public class CategoryClientFallback implements CategoryClient {
 
 	@Override
 	public CategoryDto getCategoryById(Long categoryId) {
-		log.warn("Fallback getCategoryById({}): feature-service недоступен, возвращаем null", categoryId);
+		log.warn("Fallback getCategoryById({}): category-service недоступен, возвращаем null", categoryId);
 		return null;
 	}
 
 	@Override
 	public List<CategoryDto> getCategoriesByIds(List<Long> ids) {
-		log.warn("Fallback getCategoriesByIds({}): feature-service недоступен, возвращаем пустой список", ids);
+		log.warn("Fallback getCategoriesByIds({}): category-service недоступен, возвращаем пустой список", ids);
 		return List.of();
 	}
 }
