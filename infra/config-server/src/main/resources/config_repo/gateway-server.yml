@@ -6,13 +6,105 @@ spring:
   cloud:
     gateway:
       mvc:
-        # Автоматическое создание маршрутов по имени сервиса из реестра Eureka
+        # Явные маршруты к микросервисам по Path-предикатам.
+        # Один route = один Path-шаблон (в Spring Cloud Gateway MVC надёжнее, чем несколько
+        # шаблонов через запятую в одном Path — это ломает матчинг). Порядок важен: специфичные
+        # пути (requests) идут раньше более общих (events).
+        # /internal/** нигде не маршрутизируется — внутреннее API закрыто от внешних клиентов.
         discovery:
           locator:
-            enabled: true
-        # Явный маршрут всего трафика на main-service (все эндпоинты принадлежат ему)
+            enabled: false
         routes:
-          - id: main-service
-            uri: lb://main-service
+          # ─── request-service ─────────────────────────────────────────────
+          - id: request-event-scoped
+            uri: lb://request-service
             predicates:
-              - Path=/**
+              - Path=/users/{userId}/events/{eventId}/requests
+          - id: request-event-scoped-sub
+            uri: lb://request-service
+            predicates:
+              - Path=/users/{userId}/events/{eventId}/requests/**
+          - id: request-user
+            uri: lb://request-service
+            predicates:
+              - Path=/users/{userId}/requests
+          - id: request-user-sub
+            uri: lb://request-service
+            predicates:
+              - Path=/users/{userId}/requests/**
+          # ─── event-service (events + locations) ──────────────────────────
+          - id: event-private-list
+            uri: lb://event-service
+            predicates:
+              - Path=/users/{userId}/events
+          - id: event-private-sub
+            uri: lb://event-service
+            predicates:
+              - Path=/users/{userId}/events/**
+          - id: event-admin
+            uri: lb://event-service
+            predicates:
+              - Path=/admin/events
+          - id: event-admin-sub
+            uri: lb://event-service
+            predicates:
+              - Path=/admin/events/**
+          - id: event-public
+            uri: lb://event-service
+            predicates:
+              - Path=/events
+          - id: event-public-sub
+            uri: lb://event-service
+            predicates:
+              - Path=/events/**
+          - id: location-admin
+            uri: lb://event-service
+            predicates:
+              - Path=/admin/locations
+          - id: location-admin-sub
+            uri: lb://event-service
+            predicates:
+              - Path=/admin/locations/**
+          # ─── user-service ────────────────────────────────────────────────
+          - id: user-admin
+            uri: lb://user-service
+            predicates:
+              - Path=/admin/users
+          - id: user-admin-sub
+            uri: lb://user-service
+            predicates:
+              - Path=/admin/users/**
+          # ─── category-service (categories) ───────────────────────────────
+          - id: category-admin
+            uri: lb://category-service
+            predicates:
+              - Path=/admin/categories
+          - id: category-admin-sub
+            uri: lb://category-service
+            predicates:
+              - Path=/admin/categories/**
+          - id: category-public
+            uri: lb://category-service
+            predicates:
+              - Path=/categories
+          - id: category-public-sub
+            uri: lb://category-service
+            predicates:
+              - Path=/categories/**
+          # ─── compilation-service (compilations) ──────────────────────────
+          - id: compilation-admin
+            uri: lb://compilation-service
+            predicates:
+              - Path=/admin/compilations
+          - id: compilation-admin-sub
+            uri: lb://compilation-service
+            predicates:
+              - Path=/admin/compilations/**
+          - id: compilation-public
+            uri: lb://compilation-service
+            predicates:
+              - Path=/compilations
+          - id: compilation-public-sub
+            uri: lb://compilation-service
+            predicates:
+              - Path=/compilations/**
