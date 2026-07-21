@@ -2,15 +2,11 @@ package ru.practicum.aggregator.config;
 
 import org.apache.kafka.common.serialization.Serde;
 import org.apache.kafka.common.serialization.Serdes;
-import org.apache.kafka.streams.StreamsBuilder;
 import org.apache.kafka.streams.StreamsConfig;
 import org.apache.kafka.streams.Topology;
-import org.apache.kafka.streams.kstream.Consumed;
 import org.apache.kafka.streams.processor.ProcessorContext;
 import org.apache.kafka.streams.state.KeyValueStore;
 import org.apache.kafka.streams.state.Stores;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.autoconfigure.kafka.KafkaProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.annotation.EnableKafkaStreams;
@@ -83,30 +79,35 @@ public class AggregatorStreamsConfig {
 	}
 
 	/**
-	 * Описывает topology: source → processor (4 state stores) → sink.
+	 * Описывает topology целиком на Processor API: source → processor (4 state stores) → sink.
+	 *
+	 * <p>Важно: топик регистрируется ОДИН раз (через {@code addSource}). Раньше здесь был
+	 * и {@code builder.stream(...)}, и {@code topology.addSource(...)} — Kafka Streams падал с
+	 * {@code "Topic ... has already been registered by another source"}.
+	 *
+	 * <p>State stores привязываются к topology через {@code topology.addStateStore(...)} —
+	 * так они гарантированно доступны процессору.
 	 */
 	@Bean
-	public Topology aggregatorTopology(StreamsBuilder builder,
-									   @Value("${spring.kafka.streams.application-id:aggregator}") String appId,
-									   KafkaProperties kafkaProperties) {
+	public Topology aggregatorTopology() {
 		Serde<Set<Integer>> setSerde = Serdes.serdeFrom(new JsonSetSerializer(), new JsonSetDeserializer());
+		Serde<UserActionAvro> avroSerde = AvroSerdes.forClass(UserActionAvro.class);
+
+		Topology topology = new Topology();
 
 		// ─── State stores (key-value, persistent, с changelog-топиком) ──
-		builder.addStateStore(Stores.keyValueStoreBuilder(
+		// Привязываем к topology (а не к StreamsBuilder), чтобы они были доступны
+		// процессору, и привязка была однозначной.
+		topology.addStateStore(Stores.keyValueStoreBuilder(
 				Stores.persistentKeyValueStore(USER_ACTION_STORE), Serdes.String(), Serdes.Double()));
-		builder.addStateStore(Stores.keyValueStoreBuilder(
+		topology.addStateStore(Stores.keyValueStoreBuilder(
 				Stores.persistentKeyValueStore(EVENT_WEIGHTS_STORE), Serdes.Integer(), Serdes.Double()));
-		builder.addStateStore(Stores.keyValueStoreBuilder(
+		topology.addStateStore(Stores.keyValueStoreBuilder(
 				Stores.persistentKeyValueStore(EVENTS_BY_USER_STORE), Serdes.Integer(), setSerde));
-		builder.addStateStore(Stores.keyValueStoreBuilder(
+		topology.addStateStore(Stores.keyValueStoreBuilder(
 				Stores.persistentKeyValueStore(SIMILARITY_STORE), Serdes.String(), Serdes.Double()));
 
-		// ─── Source: stats.user-actions.v1 ───────────────────────────────
-		Serde<UserActionAvro> avroSerde = AvroSerdes.forClass(UserActionAvro.class);
-		builder.stream(USER_ACTIONS_TOPIC, Consumed.with(Serdes.String(), avroSerde));
-
-		// Чистый Processor-API topology (надёжнее DSL для инкрементального обновления).
-		Topology topology = builder.build();
+		// ─── Граф topology ──────────────────────────────────────────────
 		topology.addSource(SOURCE_NODE, Serdes.String().deserializer(),
 				avroSerde.deserializer(), USER_ACTIONS_TOPIC);
 		topology.addProcessor(PROCESSOR_NODE,
