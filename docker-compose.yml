@@ -89,6 +89,73 @@ services:
       - SPRING_DATASOURCE_PASSWORD=postgres
       - SPRING_PROFILES_ACTIVE=docker
 
+  # ─── Сервисы рекомендательной подсистемы (Этап 3-2) ───────────────────
+  # Collector: принимает действия пользователей по gRPC, пишет в Kafka.
+  # Aggregator: Kafka Streams, считает косинусное сходство мероприятий.
+  # Analyzer: читает оба Kafka-топика в БД, отвечает по gRPC рекомендациями.
+  collector:
+    build: ./collector
+    image: collector-image
+    container_name: collector
+    restart: on-failure
+    depends_on:
+      discovery-server:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    environment:
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://discovery-server:8761/eureka
+      - CONFIG_SERVER_URL=http://config-server:8888
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - SPRING_PROFILES_ACTIVE=docker
+
+  aggregator:
+    build: ./aggregator
+    image: aggregator-image
+    container_name: aggregator
+    restart: on-failure
+    depends_on:
+      discovery-server:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      kafka-topics-init:
+        condition: service_completed_successfully
+    environment:
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://discovery-server:8761/eureka
+      - CONFIG_SERVER_URL=http://config-server:8888
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - SPRING_PROFILES_ACTIVE=docker
+
+  analyzer:
+    build: ./analyzer
+    image: analyzer-image
+    container_name: analyzer
+    restart: on-failure
+    depends_on:
+      discovery-server:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      kafka-topics-init:
+        condition: service_completed_successfully
+      analyzer-db:
+        condition: service_healthy
+    environment:
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://discovery-server:8761/eureka
+      - CONFIG_SERVER_URL=http://config-server:8888
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://analyzer-db:5432/ewm_analyzer
+      - SPRING_DATASOURCE_USERNAME=postgres
+      - SPRING_DATASOURCE_PASSWORD=postgres
+      - SPRING_PROFILES_ACTIVE=docker
+
   # ─── БД основного сервиса ─────────────────────────────────────────────
   ewm-db:
     image: postgres:15.1-alpine
@@ -210,7 +277,94 @@ services:
       - SPRING_DATASOURCE_PASSWORD=postgres
       - SPRING_PROFILES_ACTIVE=docker
 
+  # ─── Apache Kafka (KRaft, без Zookeeper) ──────────────────────────────
+  # Один брокер достаточен для диплома. KRaft-режим хранит метаданные внутри Kafka.
+  kafka:
+    image: confluentinc/cp-kafka:7.6.1
+    container_name: ewm-kafka
+    ports:
+      - "9092:9092"   # внутренний (docker-сеть) + хостовый доступ
+      - "9093:9093"   # controller-порт (KRaft)
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: "broker,controller"
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      # Внутри docker-сети сервисы ходят на kafka:9092; с хоста — на localhost:9092.
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      # Авто-создание топиков выключено — создаём явно (kafka-topics-init).
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      # Для KRaft требуется уникальный cluster-id (используется стабильный, чтобы data не терялась между рестартами).
+      CLUSTER_ID: "MkU3OEVBNTcwNTJENDM2Qk"
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  # ─── Создание Kafka-топиков (one-shot) ────────────────────────────────
+  # По аналогии с «платформой умного дома»: после старта kafka создаёт два топика
+  # рекомендательной подсистемы и завершается.
+  kafka-topics-init:
+    image: confluentinc/cp-kafka:7.6.1
+    container_name: ewm-kafka-topics-init
+    depends_on:
+      kafka:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command: |
+      "
+      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists \
+        --topic stats.user-actions.v1 --partitions 1 --replication-factor 1 \
+        --config cleanup.policy=compact,delete && \
+      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists \
+        --topic stats.events-similarity.v1 --partitions 1 --replication-factor 1 \
+        --config cleanup.policy=compact,delete && \
+      kafka-topics --bootstrap-server kafka:9092 --list
+      "
+    restart: "no"
+
+  # ─── UI для Kafka (опционально, отладка на http://localhost:8090) ─────
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: ewm-kafka-ui
+    depends_on:
+      kafka:
+        condition: service_healthy
+    ports:
+      - "8090:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: ewm
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+
+  # ─── БД сервиса рекомендаций (Analyzer) ───────────────────────────────
+  analyzer-db:
+    image: postgres:15.1-alpine
+    container_name: EWM-analyzer-db
+    ports:
+      - "6543:5432"
+    environment:
+      - POSTGRES_DB=ewm_analyzer
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    volumes:
+      - analyzer-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 volumes:
   stats-db-data:
   ewm-db-data:
+  analyzer-db-data:
 

@@ -1,0 +1,15 @@
+# Конфигурация aggregator, раздаваемая через Config Server.
+# Kafka Streams приложение: читает stats.user-actions.v1, пишет stats.events-similarity.v1.
+# application.id берётся из application.properties (см. AggregatorStreamsConfig).
+spring:
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    streams:
+      application-id: aggregator
+      # Авто-создание changelog-топиков для state stores.
+      state-dir: /tmp/kafka-streams
+      properties:
+        default.key.serde: org.apache.kafka.common.serialization.Serdes$StringSerde
+        default.value.serde: ru.practicum.aggregator.config.AvroSerdes
+        commit.interval.ms: 1000
+        num.stream.threads: 1

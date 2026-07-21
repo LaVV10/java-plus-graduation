@@ -1,0 +1,37 @@
+syntax = "proto3";
+
+package stats.service.collector;
+
+option java_package = "ru.practicum.ewm.stats.action.v1";
+option java_multiple_files = true;
+
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+
+// Действие пользователя с мероприятием. Поступает от core-сервисов в Collector.
+message UserActionProto {
+  // Идентификатор пользователя, совершившего действие.
+  int64 user_id = 1;
+  // Идентификатор мероприятия, с которым связано действие.
+  int64 event_id = 2;
+  // Тип действия.
+  ActionTypeProto action_type = 3;
+  // Временна́я метка действия.
+  google.protobuf.Timestamp timestamp = 4;
+}
+
+// Тип действия пользователя с мероприятием.
+enum ActionTypeProto {
+  // Просмотр страницы мероприятия.
+  ACTION_VIEW = 0;
+  // Заявка на участие в мероприятии.
+  ACTION_REGISTER = 1;
+  // Положительная оценка/лайк мероприятию.
+  ACTION_LIKE = 2;
+}
+
+// gRPC-сервис приёма действий пользователей (Collector).
+service UserActionController {
+  // Принимает действие и асинхронно кладёт его в Kafka-топик stats.user-actions.v1.
+  rpc CollectUserAction(UserActionProto) returns (google.protobuf.Empty);
+}

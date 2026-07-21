@@ -33,6 +33,13 @@ public class ErrorHandler {
 	}
 
 	@ExceptionHandler
+	@ResponseStatus(HttpStatus.BAD_REQUEST)
+	@ResponseBody
+	public ErrorResponse handleLikeNotAllowedException(final LikeNotAllowedException exception) {
+		return new ErrorResponse(exception.getMessage());
+	}
+
+	@ExceptionHandler
 	@ResponseStatus(HttpStatus.NOT_FOUND)
 	@ResponseBody
 	public ErrorResponse handleEventNotExistException(final EventNotExistException exception) {

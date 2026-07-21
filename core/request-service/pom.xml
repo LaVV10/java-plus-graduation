@@ -55,6 +55,13 @@
 			<version>0.0.1-SNAPSHOT</version>
 		</dependency>
 
+		<!-- gRPC-клиент к Collector (отправка ACTION_REGISTER при создании заявки, Этап 3-2) -->
+		<dependency>
+			<groupId>ru.practicum</groupId>
+			<artifactId>stats-client</artifactId>
+			<version>0.0.1-SNAPSHOT</version>
+		</dependency>
+
 		<!-- Spring Cloud: Eureka client + Config client + OpenFeign + Resilience4j -->
 		<dependency>
 			<groupId>org.springframework.cloud</groupId>

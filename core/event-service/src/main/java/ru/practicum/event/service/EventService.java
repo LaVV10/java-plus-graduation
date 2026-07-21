@@ -35,9 +35,13 @@ public interface EventService {
 	List<EventFullDto> getEventsWithParamsByUser(String text, List<Long> users, List<Long> categories,
 												 Boolean paid, String rangeStart, String rangeEnd,
 												 Boolean onlyAvailable, SortValue sort, Integer from,
-												 Integer size, String ip, String uri, List<String> states);
+												 Integer size, List<String> states);
 
-	EventFullDto getEvent(Long id, String ip, String uri);
+	/**
+	 * Публичное получение события по id. Если передан {@code userId} (заголовок
+	 * {@code X-EWM-USER-ID}), фиксирует просмотр через Collector (ACTION_VIEW).
+	 */
+	EventFullDto getEvent(Long id, Long userId);
 
 	boolean existsByCategoryId(Long categoryId);
 
@@ -46,4 +50,19 @@ public interface EventService {
 
 	/** Внутренний доступ для compilation-service: краткие данные событий по списку id (для подборок). */
 	List<EventShortDto> getEventShortDtosByIds(List<Long> eventIds);
+
+	/**
+	 * Рекомендации мероприятий для пользователя на основе предсказания оценки (через Analyzer).
+	 *
+	 * @param userId     идентификатор пользователя (из заголовка X-EWM-USER-ID)
+	 * @param maxResults ограничение количества
+	 */
+	List<EventShortDto> getRecommendations(Long userId, Integer maxResults);
+
+	/**
+	 * Лайк мероприятия пользователем. По ТЗ пользователь может лайкать только посещённые
+	 * им мероприятия (есть запись о просмотре), иначе {@code 400 BAD REQUEST}.
+	 * Отправляет {@code ACTION_LIKE} в Collector.
+	 */
+	void likeEvent(Long userId, Long eventId);
 }

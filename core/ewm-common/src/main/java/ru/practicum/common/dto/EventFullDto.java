@@ -43,7 +43,13 @@ public class EventFullDto {
 	private Boolean requestModeration;
 	private EventState state;
 	private String title;
-	private Long views;
+
+	/**
+	 * Рейтинг мероприятия — сумма максимальных весов действий пользователей с ним,
+	 * запрашивается у сервиса рекомендаций (Analyzer) через gRPC. Заменил поле views
+	 * на Этапе 3-2 диплома.
+	 */
+	private Double rating;
 
 	/** null-сейф: счётчики не должны торчать как null наружу. */
 	@JsonSetter(nulls = Nulls.SKIP)
@@ -52,7 +58,7 @@ public class EventFullDto {
 	}
 
 	@JsonSetter(nulls = Nulls.SKIP)
-	public void setViews(Long views) {
-		this.views = views == null ? 0L : views;
+	public void setRating(Double rating) {
+		this.rating = rating == null ? 0.0 : rating;
 	}
 }

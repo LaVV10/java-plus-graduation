@@ -1,0 +1,18 @@
+# Конфигурация collector, раздаваемая через Config Server.
+# gRPC-сервер на случайном порту (регистрируется в Eureka, клиенты находят через discovery:///collector).
+grpc:
+  server:
+    port: 0
+
+spring:
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: ru.practicum.collector.config.AvroSerializer
+      acks: "1"
+      retries: 3
+      properties:
+        linger.ms: 0
+    topic:
+      user-actions: stats.user-actions.v1

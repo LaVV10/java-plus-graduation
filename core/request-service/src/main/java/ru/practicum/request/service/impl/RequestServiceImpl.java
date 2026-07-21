@@ -7,8 +7,10 @@ import ru.practicum.common.dto.EventShortInfoDto;
 import ru.practicum.common.dto.UserShortDto;
 import ru.practicum.common.enums.EventState;
 import ru.practicum.common.enums.RequestStatus;
+import ru.practicum.ewm.stats.action.v1.ActionTypeProto;
 import ru.practicum.request.client.EventClient;
 import ru.practicum.request.client.UserClient;
+import ru.practicum.stats.client.CollectorClient;
 import ru.practicum.request.dto.RequestDto;
 import ru.practicum.request.dto.RequestStatusUpdateDto;
 import ru.practicum.request.dto.RequestStatusUpdateResult;
@@ -38,6 +40,7 @@ public class RequestServiceImpl implements RequestService {
 	private final EventClient eventClient;
 	private final UserClient userClient;
 	private final RequestMapper requestMapper;
+	private final CollectorClient collectorClient;
 
 	@Override
 	public List<RequestDto> getRequestsByOwnerOfEvent(Long userId, Long eventId) {
@@ -81,7 +84,15 @@ public class RequestServiceImpl implements RequestService {
 			request.setStatus(RequestStatus.PENDING);
 		}
 
-		return requestMapper.toRequestDto(requestRepository.save(request));
+		RequestDto saved = requestMapper.toRequestDto(requestRepository.save(request));
+
+		// Этап 3-2: фиксируем регистрацию пользователя на мероприятие в рекомендательной подсистеме.
+		// Fire-and-forget: сбой Collector не должен валить создание заявки.
+		collectorClient.collectUserActionSafe(userId, event.getId(),
+				ActionTypeProto.ACTION_REGISTER,
+				request.getCreated().atZone(java.time.ZoneOffset.UTC).toInstant());
+
+		return saved;
 	}
 
 	@Transactional

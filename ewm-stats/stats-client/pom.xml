@@ -15,7 +15,7 @@
     <packaging>jar</packaging>
 
     <dependencies>
-        <!-- Spring Web Client -->
+        <!-- Spring Web Client (для старого HTTP-клиента StatsClient, остался совместимости ради) -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
@@ -24,11 +24,26 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
-        <!-- Общие DTO -->
+        <!-- Общие DTO старого stats-сервиса -->
         <dependency>
             <groupId>ru.practicum</groupId>
             <artifactId>stats-dto</artifactId>
             <version>0.0.1-SNAPSHOT</version>
+        </dependency>
+        <!-- gRPC-клиенты к Collector и Analyzer (Этап 3-2). -->
+        <dependency>
+            <groupId>net.devh</groupId>
+            <artifactId>grpc-client-spring-boot-starter</artifactId>
+        </dependency>
+        <!-- Контракт: gRPC-стабы UserActionController / RecommendationsController -->
+        <dependency>
+            <groupId>ru.practicum</groupId>
+            <artifactId>stats-contract</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <scope>provided</scope>
         </dependency>
     </dependencies>
 </project>

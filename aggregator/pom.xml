@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+		 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+		 xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+
+	<parent>
+		<groupId>ru.practicum</groupId>
+		<artifactId>explore-with-me</artifactId>
+		<version>0.0.1-SNAPSHOT</version>
+		<relativePath>../pom.xml</relativePath>
+	</parent>
+
+	<artifactId>aggregator</artifactId>
+	<packaging>jar</packaging>
+	<name>Aggregator Service</name>
+
+	<description>
+		Потоковый расчёт косинусного сходства мероприятий (Этап 3-2).
+		Читает UserActionAvro из топика stats.user-actions.v1, инкрементально обновляет
+		частные суммы S_min(A,B), S_a, S_b, и отправляет EventSimilarityAvro в топик
+		stats.events-similarity.v1. Реализация — Kafka Streams.
+	</description>
+
+	<dependencies>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-actuator</artifactId>
+		</dependency>
+
+		<!-- Spring Cloud: Eureka-клиент + Config-клиент -->
+		<dependency>
+			<groupId>org.springframework.cloud</groupId>
+			<artifactId>spring-cloud-starter-netflix-eureka-client</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.cloud</groupId>
+			<artifactId>spring-cloud-starter-config</artifactId>
+		</dependency>
+
+		<!-- Kafka Streams -->
+		<dependency>
+			<groupId>org.apache.kafka</groupId>
+			<artifactId>kafka-streams</artifactId>
+		</dependency>
+		<!-- Spring Kafka обёртка для KafkaStreams (StreamsBuilderFactoryBean) -->
+		<dependency>
+			<groupId>org.springframework.kafka</groupId>
+			<artifactId>spring-kafka</artifactId>
+		</dependency>
+
+		<!-- Общий контракт: Avro UserActionAvro / EventSimilarityAvro -->
+		<dependency>
+			<groupId>ru.practicum</groupId>
+			<artifactId>stats-contract</artifactId>
+		</dependency>
+
+		<dependency>
+			<groupId>org.projectlombok</groupId>
+			<artifactId>lombok</artifactId>
+			<optional>true</optional>
+		</dependency>
+
+		<!-- Тесты: юнит-тесты математики сходства -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-test</artifactId>
+			<scope>test</scope>
+		</dependency>
+	</dependencies>
+
+	<build>
+		<plugins>
+			<plugin>
+				<groupId>org.springframework.boot</groupId>
+				<artifactId>spring-boot-maven-plugin</artifactId>
+				<configuration>
+					<mainClass>ru.practicum.aggregator.AggregatorApplication</mainClass>
+					<layout>JAR</layout>
+				</configuration>
+			</plugin>
+		</plugins>
+	</build>
+
+</project>

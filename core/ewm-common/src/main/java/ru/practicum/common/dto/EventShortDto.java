@@ -31,7 +31,12 @@ public class EventShortDto {
 	private UserShortDto initiator;
 	private Boolean paid;
 	private String title;
-	private Long views;
+
+	/**
+	 * Рейтинг мероприятия — сумма максимальных весов действий пользователей,
+	 * запрашивается у Analyzer через gRPC. Заменил поле views на Этапе 3-2.
+	 */
+	private Double rating;
 
 	/** По умолчанию счётчики неизвестны — null не должен торчать наружу. */
 	@JsonSetter(nulls = Nulls.SKIP)
@@ -40,7 +45,7 @@ public class EventShortDto {
 	}
 
 	@JsonSetter(nulls = Nulls.SKIP)
-	public void setViews(Long views) {
-		this.views = views == null ? 0L : views;
+	public void setRating(Double rating) {
+		this.rating = rating == null ? 0.0 : rating;
 	}
 }
