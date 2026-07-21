@@ -71,8 +71,8 @@ public class UserActionControllerGrpcImpl extends UserActionControllerGrpc.UserA
 				: Instant.now();
 
 		return UserActionAvro.newBuilder()
-				.setUserId(Math.toIntExact(proto.getUserId()))
-				.setEventId(Math.toIntExact(proto.getEventId()))
+				.setUserId(proto.getUserId())
+				.setEventId(proto.getEventId())
 				.setActionType(mapAction(proto.getActionType()))
 				.setTimestamp(timestamp)
 				.build();

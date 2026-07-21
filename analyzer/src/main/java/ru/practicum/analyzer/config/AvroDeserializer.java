@@ -8,18 +8,15 @@ import org.apache.kafka.common.errors.SerializationException;
 import org.apache.kafka.common.serialization.Deserializer;
 
 /**
- * Kafka-десериализатор Avro в Confluent Wire Format без Schema Registry.
+ * Kafka-десериализатор Avro — чистый Avro binary, без Confluent wire format.
  *
- * <p>Пропускает заголовок Confluent (magic byte 0 + 4 байта schema-id) и читает
- * чистый Avro-payload по известному классу схемы (передаётся в конструкторе).
+ * <p>Тестер Практикума использует {@code ru.practicum.kafka.deserializer.BaseAvroDeserializer},
+ * который читает payload с первого байта. Мы пишем и читаем тем же форматом.
  *
  * <p>Совместим с {@link ru.practicum.collector.config.AvroSerializer} на стороне Collector'а
- * и с тестером Практикума, который использует {@code KafkaAvroDeserializer}.
+ * и {@code GeneralAvroSerializer} тестера.
  */
 public class AvroDeserializer<T extends SpecificRecord> implements Deserializer<T> {
-
-	private static final byte MAGIC_BYTE = 0x00;
-	private static final int HEADER_SIZE = 1 + Integer.BYTES;
 
 	private final Class<T> clazz;
 
@@ -36,16 +33,10 @@ public class AvroDeserializer<T extends SpecificRecord> implements Deserializer<
 		try {
 			T prototype = (T) clazz.getDeclaredConstructor().newInstance();
 			SpecificDatumReader<T> reader = new SpecificDatumReader<>(prototype.getSchema());
-			// Пропускаем заголовок Confluent, если он присутствует.
-			int offset = hasConfluentHeader(data) ? HEADER_SIZE : 0;
-			BinaryDecoder decoder = DecoderFactory.get().binaryDecoder(data, offset, data.length - offset, null);
+			BinaryDecoder decoder = DecoderFactory.get().binaryDecoder(data, null);
 			return reader.read(null, decoder);
 		} catch (Exception e) {
 			throw new SerializationException("Avro-десериализация для топика " + topic, e);
 		}
-	}
-
-	private static boolean hasConfluentHeader(byte[] data) {
-		return data.length > HEADER_SIZE && data[0] == MAGIC_BYTE;
 	}
 }

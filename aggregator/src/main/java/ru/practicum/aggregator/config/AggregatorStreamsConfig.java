@@ -94,7 +94,7 @@ public class AggregatorStreamsConfig {
 	 */
 	@Bean
 	public KStream<String, EventSimilarityAvro> aggregatorTopology(StreamsBuilder builder) {
-		Serde<Set<Integer>> setSerde = Serdes.serdeFrom(new JsonSetSerializer(), new JsonSetDeserializer());
+		Serde<Set<Long>> setSerde = Serdes.serdeFrom(new JsonSetSerializer(), new JsonSetDeserializer());
 		Serde<UserActionAvro> inputSerde = AvroSerdes.forClass(UserActionAvro.class);
 		Serde<EventSimilarityAvro> outputSerde = AvroSerdes.forClass(EventSimilarityAvro.class);
 
@@ -102,9 +102,9 @@ public class AggregatorStreamsConfig {
 		builder.addStateStore(Stores.keyValueStoreBuilder(
 				Stores.persistentKeyValueStore(USER_ACTION_STORE), Serdes.String(), Serdes.Double()));
 		builder.addStateStore(Stores.keyValueStoreBuilder(
-				Stores.persistentKeyValueStore(EVENT_WEIGHTS_STORE), Serdes.Integer(), Serdes.Double()));
+				Stores.persistentKeyValueStore(EVENT_WEIGHTS_STORE), Serdes.Long(), Serdes.Double()));
 		builder.addStateStore(Stores.keyValueStoreBuilder(
-				Stores.persistentKeyValueStore(EVENTS_BY_USER_STORE), Serdes.Integer(), setSerde));
+				Stores.persistentKeyValueStore(EVENTS_BY_USER_STORE), Serdes.Long(), setSerde));
 		builder.addStateStore(Stores.keyValueStoreBuilder(
 				Stores.persistentKeyValueStore(SIMILARITY_STORE), Serdes.String(), Serdes.Double()));
 
@@ -148,8 +148,8 @@ public class AggregatorStreamsConfig {
 
 		private org.apache.kafka.streams.processor.api.ProcessorContext<String, EventSimilarityAvro> context;
 		private KeyValueStore<String, Double> userActionStore;
-		private KeyValueStore<Integer, Double> eventWeightsStore;
-		private KeyValueStore<Integer, Set<Integer>> eventsByUserStore;
+		private KeyValueStore<Long, Double> eventWeightsStore;
+		private KeyValueStore<Long, Set<Long>> eventsByUserStore;
 		private KeyValueStore<String, Double> similarityStore;
 
 		SimilarityProcessor(String userActionStoreName, String eventWeightsStoreName,
@@ -165,8 +165,8 @@ public class AggregatorStreamsConfig {
 		public void init(org.apache.kafka.streams.processor.api.ProcessorContext<String, EventSimilarityAvro> context) {
 			this.context = context;
 			this.userActionStore = (KeyValueStore<String, Double>) context.getStateStore(userActionStoreName);
-			this.eventWeightsStore = (KeyValueStore<Integer, Double>) context.getStateStore(eventWeightsStoreName);
-			this.eventsByUserStore = (KeyValueStore<Integer, Set<Integer>>) context.getStateStore(eventsByUserStoreName);
+			this.eventWeightsStore = (KeyValueStore<Long, Double>) context.getStateStore(eventWeightsStoreName);
+			this.eventsByUserStore = (KeyValueStore<Long, Set<Long>>) context.getStateStore(eventsByUserStoreName);
 			this.similarityStore = (KeyValueStore<String, Double>) context.getStateStore(similarityStoreName);
 		}
 
@@ -176,8 +176,8 @@ public class AggregatorStreamsConfig {
 			if (action == null) {
 				return;
 			}
-			int userId = action.getUserId();
-			int eventId = action.getEventId();
+			long userId = action.getUserId();
+			long eventId = action.getEventId();
 			ActionTypeAvro type = action.getActionType();
 			double newWeight = SimilarityCalculator.weightOf(type);
 
@@ -199,7 +199,7 @@ public class AggregatorStreamsConfig {
 			eventWeightsStore.put(eventId, sA);
 
 			// Множество мероприятий, с которыми уже взаимодействовал этот пользователь.
-			Set<Integer> userEvents = eventsByUserStore.get(userId);
+			Set<Long> userEvents = eventsByUserStore.get(userId);
 			if (userEvents == null) {
 				userEvents = new HashSet<>();
 			}
@@ -207,8 +207,7 @@ public class AggregatorStreamsConfig {
 			Instant timestamp = action.getTimestamp() == null ? Instant.now() : action.getTimestamp();
 
 			// Пересчёт сходства со всеми остальными мероприятиями пользователя.
-			for (Integer otherBoxed : userEvents) {
-				int other = otherBoxed;
+			for (Long other : userEvents) {
 				if (other == eventId) {
 					continue;
 				}
@@ -246,14 +245,14 @@ public class AggregatorStreamsConfig {
 			// State stores управляются Kafka Streams.
 		}
 
-		private static String pairKey(int a, int b) {
+		private static String pairKey(long a, long b) {
 			return a < b ? a + ":" + b : b + ":" + a;
 		}
 
-		private static EventSimilarityAvro buildSimilarity(int eventA, int eventB,
+		private static EventSimilarityAvro buildSimilarity(long eventA, long eventB,
 														   double score, Instant timestamp) {
-			int a = Math.min(eventA, eventB);
-			int b = Math.max(eventA, eventB);
+			long a = Math.min(eventA, eventB);
+			long b = Math.max(eventA, eventB);
 			return EventSimilarityAvro.newBuilder()
 					.setEventA(a)
 					.setEventB(b)
@@ -264,17 +263,17 @@ public class AggregatorStreamsConfig {
 	}
 
 	/**
-	 * Сериализатор {@code Set<Integer>} как comma-separated значений (для state store).
+	 * Сериализатор {@code Set<Long>} как comma-separated значений (для state store).
 	 */
-	static final class JsonSetSerializer implements org.apache.kafka.common.serialization.Serializer<Set<Integer>> {
+	static final class JsonSetSerializer implements org.apache.kafka.common.serialization.Serializer<Set<Long>> {
 		@Override
-		public byte[] serialize(String topic, Set<Integer> data) {
+		public byte[] serialize(String topic, Set<Long> data) {
 			if (data == null) {
 				return null;
 			}
 			StringBuilder sb = new StringBuilder();
 			boolean first = true;
-			for (Integer e : data) {
+			for (Long e : data) {
 				if (!first) {
 					sb.append(',');
 				}
@@ -286,21 +285,21 @@ public class AggregatorStreamsConfig {
 	}
 
 	/**
-	 * Десериализатор {@code Set<Integer>} из comma-separated значений.
+	 * Десериализатор {@code Set<Long>} из comma-separated значений.
 	 */
-	static final class JsonSetDeserializer implements org.apache.kafka.common.serialization.Deserializer<Set<Integer>> {
+	static final class JsonSetDeserializer implements org.apache.kafka.common.serialization.Deserializer<Set<Long>> {
 		@Override
-		public Set<Integer> deserialize(String topic, byte[] data) {
+		public Set<Long> deserialize(String topic, byte[] data) {
 			if (data == null) {
 				return new HashSet<>();
 			}
 			String s = new String(data, StandardCharsets.UTF_8);
-			Set<Integer> set = new HashSet<>();
+			Set<Long> set = new HashSet<>();
 			if (s.isEmpty()) {
 				return set;
 			}
 			for (String part : s.split(",")) {
-				set.add(Integer.valueOf(part));
+				set.add(Long.valueOf(part));
 			}
 			return set;
 		}

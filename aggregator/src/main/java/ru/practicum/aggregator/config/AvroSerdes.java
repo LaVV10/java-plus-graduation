@@ -15,24 +15,19 @@ import org.apache.kafka.common.serialization.Serializer;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.nio.ByteBuffer;
 
 /**
- * Утилита Serde для Avro-записей {@link SpecificRecord} в Confluent Wire Format
- * без Schema Registry.
+ * Утилита Serde для Avro-записей {@link SpecificRecord} — чистый Avro binary, без Confluent
+ * wire format.
  *
- * <p>Сериализация: Confluent wire format (magic byte 0 + schema-id int32 + Avro-payload) —
- * этого формата ждёт tester Практикума.
+ * <p>Тестер Практикума использует {@code ru.practicum.kafka.deserializer.BaseAvroDeserializer},
+ * который читает payload с первого байта через {@code DecoderFactory.binaryDecoder(data, null)} —
+ * без magic byte и schema-id. Поэтому сериализуем «голый» Avro-payload.
  *
- * <p>Десериализация: пропускаем 5 байт заголовка и читаем чистый Avro-payload по известному
- * классу схемы. Класс схемы известен на стороне читателя, поэтому реальный schema-id
- * из заголовка игнорируется.
+ * <p>Совпадает с {@code ru.practicum.kafka.serializer.GeneralAvroSerializer} /
+ * {@code BaseAvroDeserializer} из {@code avro-schemas.jar} тестера.
  */
 public final class AvroSerdes {
-
-	private static final byte MAGIC_BYTE = 0x00;
-	private static final int SCHEMA_ID = 1;
-	private static final int HEADER_SIZE = 1 + Integer.BYTES;
 
 	private AvroSerdes() {
 	}
@@ -45,7 +40,7 @@ public final class AvroSerdes {
 	}
 
 	/**
-	 * Сериализатор: SpecificRecord → Confluent wire format.
+	 * Сериализатор: SpecificRecord → чистый Avro-payload.
 	 */
 	public static class AvroSerdeSerializer<T extends SpecificRecord> implements Serializer<T> {
 		@Override
@@ -53,27 +48,21 @@ public final class AvroSerdes {
 			if (data == null) {
 				return null;
 			}
-			byte[] payload;
 			try (ByteArrayOutputStream out = new ByteArrayOutputStream()) {
 				BinaryEncoder encoder = EncoderFactory.get().binaryEncoder(out, null);
 				@SuppressWarnings("unchecked")
 				SpecificDatumWriter<T> writer = new SpecificDatumWriter<>(data.getSchema());
 				writer.write(data, encoder);
 				encoder.flush();
-				payload = out.toByteArray();
+				return out.toByteArray();
 			} catch (IOException e) {
 				throw new SerializationException("Avro-сериализация для топика " + topic, e);
 			}
-			ByteBuffer buffer = ByteBuffer.allocate(HEADER_SIZE + payload.length);
-			buffer.put(MAGIC_BYTE);
-			buffer.putInt(SCHEMA_ID);
-			buffer.put(payload);
-			return buffer.array();
 		}
 	}
 
 	/**
-	 * Десериализатор: Confluent wire format → SpecificRecord.
+	 * Десериализатор: чистый Avro-payload → SpecificRecord.
 	 */
 	public static class AvroSerdeDeserializer<T extends SpecificRecord> implements Deserializer<T> {
 		private final Class<T> clazz;
@@ -91,17 +80,11 @@ public final class AvroSerdes {
 			try {
 				T prototype = (T) clazz.getDeclaredConstructor().newInstance();
 				SpecificDatumReader<T> reader = new SpecificDatumReader<>(prototype.getSchema());
-				// Пропускаем заголовок Confluent (magic byte + schema-id), если он есть.
-				int offset = hasConfluentHeader(data) ? HEADER_SIZE : 0;
-				BinaryDecoder decoder = DecoderFactory.get().binaryDecoder(data, offset, data.length - offset, null);
+				BinaryDecoder decoder = DecoderFactory.get().binaryDecoder(data, null);
 				return reader.read(null, decoder);
 			} catch (Exception e) {
 				throw new SerializationException("Avro-десериализация для топика " + topic, e);
 			}
-		}
-
-		private static boolean hasConfluentHeader(byte[] data) {
-			return data.length > HEADER_SIZE && data[0] == MAGIC_BYTE;
 		}
 	}
 }
