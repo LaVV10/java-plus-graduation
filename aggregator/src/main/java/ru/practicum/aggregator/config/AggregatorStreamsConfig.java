@@ -2,10 +2,12 @@ package ru.practicum.aggregator.config;
 
 import org.apache.kafka.common.serialization.Serde;
 import org.apache.kafka.common.serialization.Serdes;
+import org.apache.kafka.streams.StreamsBuilder;
 import org.apache.kafka.streams.StreamsConfig;
-import org.apache.kafka.streams.Topology;
-import org.apache.kafka.streams.processor.ProcessorContext;
+import org.apache.kafka.streams.kstream.Consumed;
+import org.apache.kafka.streams.kstream.KStream;
 import org.apache.kafka.streams.state.KeyValueStore;
+import org.apache.kafka.streams.state.StoreBuilder;
 import org.apache.kafka.streams.state.Stores;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -79,67 +81,75 @@ public class AggregatorStreamsConfig {
 	}
 
 	/**
-	 * Описывает topology целиком на Processor API: source → processor (4 state stores) → sink.
+	 * Описывает topology: source-поток {@code stats.user-actions.v1} → процессор
+	 * (4 state stores) → {@code stats.events-similarity.v1}.
 	 *
-	 * <p>Важно: топик регистрируется ОДИН раз (через {@code addSource}). Раньше здесь был
-	 * и {@code builder.stream(...)}, и {@code topology.addSource(...)} — Kafka Streams падал с
-	 * {@code "Topic ... has already been registered by another source"}.
+	 * <p>Реализуется через DSL {@link StreamsBuilder}, который Spring Kafka Streams
+	 * (через {@code @EnableKafkaStreams} + {@code defaultKafkaStreamsBuilder}) наполняет
+	 * и потом сам вызывает {@code builder.build()}. Создавать отдельный {@code @Bean Topology}
+	 * бесполезно — auto-config его игнорирует (это была предыдущая ошибка: топология
+	 * "no stream threads", потому что builder оставался пустым).
 	 *
-	 * <p>State stores привязываются к topology через {@code topology.addStateStore(...)} —
-	 * так они гарантированно доступны процессору.
+	 * <p>State stores регистрируются через {@link StreamsBuilder#addStateStore(StoreBuilder)}
+	 * и подключаются к процессору по именам в {@code .process(supplier, storeNames...)}.
+	 *
+	 * @param builder бин {@link StreamsBuilder}, предоставляемый Spring Kafka auto-config
 	 */
 	@Bean
-	public Topology aggregatorTopology() {
+	public KStream<String, EventSimilarityAvro> aggregatorTopology(StreamsBuilder builder) {
 		Serde<Set<Integer>> setSerde = Serdes.serdeFrom(new JsonSetSerializer(), new JsonSetDeserializer());
 		Serde<UserActionAvro> avroSerde = AvroSerdes.forClass(UserActionAvro.class);
 
-		Topology topology = new Topology();
-
 		// ─── State stores (key-value, persistent, с changelog-топиком) ──
-		// Привязываем к topology (а не к StreamsBuilder), чтобы они были доступны
-		// процессору, и привязка была однозначной.
-		topology.addStateStore(Stores.keyValueStoreBuilder(
+		builder.addStateStore(Stores.keyValueStoreBuilder(
 				Stores.persistentKeyValueStore(USER_ACTION_STORE), Serdes.String(), Serdes.Double()));
-		topology.addStateStore(Stores.keyValueStoreBuilder(
+		builder.addStateStore(Stores.keyValueStoreBuilder(
 				Stores.persistentKeyValueStore(EVENT_WEIGHTS_STORE), Serdes.Integer(), Serdes.Double()));
-		topology.addStateStore(Stores.keyValueStoreBuilder(
+		builder.addStateStore(Stores.keyValueStoreBuilder(
 				Stores.persistentKeyValueStore(EVENTS_BY_USER_STORE), Serdes.Integer(), setSerde));
-		topology.addStateStore(Stores.keyValueStoreBuilder(
+		builder.addStateStore(Stores.keyValueStoreBuilder(
 				Stores.persistentKeyValueStore(SIMILARITY_STORE), Serdes.String(), Serdes.Double()));
 
-		// ─── Граф topology ──────────────────────────────────────────────
-		topology.addSource(SOURCE_NODE, Serdes.String().deserializer(),
-				avroSerde.deserializer(), USER_ACTIONS_TOPIC);
-		topology.addProcessor(PROCESSOR_NODE,
+		// ─── Граф: stream → process → to ────────────────────────────────
+		KStream<String, UserActionAvro> source = builder.stream(
+				USER_ACTIONS_TOPIC, Consumed.with(Serdes.String(), avroSerde));
+
+		KStream<String, EventSimilarityAvro> similarities = source.process(
 				() -> new SimilarityProcessor(USER_ACTION_STORE, EVENT_WEIGHTS_STORE,
 						EVENTS_BY_USER_STORE, SIMILARITY_STORE),
-				SOURCE_NODE);
-		topology.addSink(SINK_NODE, EVENTS_SIMILARITY_TOPIC, Serdes.String().serializer(),
-				AvroSerdes.<EventSimilarityAvro>forClass(EventSimilarityAvro.class).serializer(),
-				PROCESSOR_NODE);
+				USER_ACTION_STORE, EVENT_WEIGHTS_STORE, EVENTS_BY_USER_STORE, SIMILARITY_STORE);
 
-		return topology;
+		Serde<EventSimilarityAvro> outSerde = AvroSerdes.forClass(EventSimilarityAvro.class);
+		similarities.to(EVENTS_SIMILARITY_TOPIC,
+				org.apache.kafka.streams.kstream.Produced.with(Serdes.String(), outSerde));
+
+		return similarities;
 	}
 
 	/**
 	 * Процессор инкрементального обновления сходства мероприятий.
+	 *
+	 * <p>Использует Processor API v3 ({@code org.apache.kafka.streams.processor.api.Processor}):
+	 * метод {@code process} принимает {@link org.apache.kafka.streams.processor.api.Record},
+	 * а вывод идёт через {@code context.forward(record)} — это позволяет получить выходной
+	 * поток через {@code KStream.process(...)}, возвращающий {@code KStream<KOut,VOut>}.
 	 *
 	 * <p>При каждом новом действии пользователя (userId, eventId, action, ts):
 	 * <ol>
 	 *   <li>Берёт вес действия (VIEW=0.4 / REGISTER=0.8 / LIKE=1.0).</li>
 	 *   <li>Если он не превышает текущий максимальный вес пользователя по этому мероприятию — игнор.</li>
 	 *   <li>Иначе обновляет S_a (сумма весов по мероприятию) и S_min(A,B) для всех B,
-	 *       с которыми пользователь уже взаимодействовал, и пересылает обновлённое сходство в sink.</li>
+	 *       с которыми пользователь уже взаимодействовал, и пересылает обновлённое сходство дальше.</li>
 	 * </ol>
 	 */
 	public static final class SimilarityProcessor
-			implements org.apache.kafka.streams.processor.Processor<String, UserActionAvro> {
+			implements org.apache.kafka.streams.processor.api.Processor<String, UserActionAvro, String, EventSimilarityAvro> {
 		private final String userActionStoreName;
 		private final String eventWeightsStoreName;
 		private final String eventsByUserStoreName;
 		private final String similarityStoreName;
 
-		private ProcessorContext context;
+		private org.apache.kafka.streams.processor.api.ProcessorContext<String, EventSimilarityAvro> context;
 		private KeyValueStore<String, Double> userActionStore;
 		private KeyValueStore<Integer, Double> eventWeightsStore;
 		private KeyValueStore<Integer, Set<Integer>> eventsByUserStore;
@@ -155,7 +165,7 @@ public class AggregatorStreamsConfig {
 
 		@SuppressWarnings("unchecked")
 		@Override
-		public void init(ProcessorContext context) {
+		public void init(org.apache.kafka.streams.processor.api.ProcessorContext<String, EventSimilarityAvro> context) {
 			this.context = context;
 			this.userActionStore = (KeyValueStore<String, Double>) context.getStateStore(userActionStoreName);
 			this.eventWeightsStore = (KeyValueStore<Integer, Double>) context.getStateStore(eventWeightsStoreName);
@@ -164,7 +174,8 @@ public class AggregatorStreamsConfig {
 		}
 
 		@Override
-		public void process(String key, UserActionAvro action) {
+		public void process(org.apache.kafka.streams.processor.api.Record<String, UserActionAvro> record) {
+			UserActionAvro action = record.value();
 			if (action == null) {
 				return;
 			}
@@ -220,8 +231,9 @@ public class AggregatorStreamsConfig {
 
 				double score = SimilarityCalculator.similarity(sMin, sA, sB);
 				EventSimilarityAvro out = buildSimilarity(eventId, other, score, timestamp);
-				// Ключ выходной записи — упорядоченная пара (как и значения eventA/eventB).
-				context.forward(pairKey, out);
+				// forward нового API принимает Record; timestamp берём из исходной записи.
+				context.forward(new org.apache.kafka.streams.processor.api.Record<>(
+						pairKey, out, record.timestamp()));
 			}
 
 			// Регистрируем мероприятие за пользователем (после цикла — чтобы не учитывать само себя).
