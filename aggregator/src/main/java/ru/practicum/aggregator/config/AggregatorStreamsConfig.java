@@ -22,6 +22,7 @@ import java.time.Instant;
 import java.util.HashSet;
 import java.util.Properties;
 import java.util.Set;
+import java.util.UUID;
 
 /**
  * Топология Kafka Streams сервиса Aggregator.
@@ -64,7 +65,12 @@ public class AggregatorStreamsConfig {
 
 	/**
 	 * Донастраивает {@link org.springframework.kafka.config.StreamsBuilderFactoryBean}:
-	 * application.id (groupId Streams-приложения) и exactly-once.
+	 * application.id (groupId Streams-приложения) с UUID-суффиксом и exactly-once.
+	 *
+	 * <p>UUID-суффикс в application.id — ключевой приём (как в референс-решениях):
+	 * каждый запуск получает уникальный id → Streams создаёт новые changelog-топики
+	 * и state directory → не наследует состояние/offset'ы прошлых прогонов CI,
+	 * где в Kafka могли остаться битые сообщения.
 	 */
 	@Bean
 	public StreamsBuilderFactoryBeanConfigurer streamsBuilderFactoryBeanConfigurer() {
@@ -73,7 +79,7 @@ public class AggregatorStreamsConfig {
 			if (props == null) {
 				props = new Properties();
 			}
-			props.put(StreamsConfig.APPLICATION_ID_CONFIG, "aggregator");
+			props.put(StreamsConfig.APPLICATION_ID_CONFIG, "aggregator-" + UUID.randomUUID());
 			props.put(StreamsConfig.PROCESSING_GUARANTEE_CONFIG, StreamsConfig.EXACTLY_ONCE_V2);
 			factory.setStreamsConfiguration(props);
 		};

@@ -1,18 +1,22 @@
 # Конфигурация aggregator, раздаваемая через Config Server.
 # Kafka Streams приложение: читает stats.user-actions.v1, пишет stats.events-similarity.v1.
-# application.id берётся из application.properties (см. AggregatorStreamsConfig).
-# Avro-сериализация — кастомная (AvroSerdes), Confluent wire format без Schema Registry.
+# application.id генерируется с UUID-суффиксом в AggregatorStreamsConfig (не из конфига) —
+# чтобы каждый запуск создавал новые changelog-топики и не наследовал состояние прошлых прогонов.
+# Avro-сериализация — кастомная (AvroSerdes), чистый Avro без Schema Registry.
 
 spring:
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     streams:
-      application-id: aggregator
-      # Авто-создание changelog-топиков для state stores.
+      # application-id здесь не указывается — задаётся в AggregatorStreamsConfig
+      # с UUID-суффиксом на каждый запуск (как в референс-решении Danny1kk).
       state-dir: /tmp/kafka-streams
       properties:
         default.key.serde: org.apache.kafka.common.serialization.Serdes$StringSerde
         # default.value.serde НЕ задаём — для каждого потока serde указывается явно
-        # через AvroSerdes.forClass(...) (Confluent wire format без Schema Registry).
+        # через AvroSerdes.forClass(...) (чистый Avro без Schema Registry).
         commit.interval.ms: 1000
         num.stream.threads: 1
+        # При новом application.id (каждый запуск) — новый consumer не имеет committed offset,
+        # поэтому начинает чтение с конца топика. Дополнительно страхуемся auto-offset-reset.
+        auto.offset.reset: latest

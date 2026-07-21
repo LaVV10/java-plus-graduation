@@ -1,6 +1,6 @@
 # Конфигурация analyzer, раздаваемая через Config Server.
 # gRPC-сервер на случайном порту (клиенты находят через discovery:///analyzer).
-# Avro-десериализация — кастомная (AvroDeserializer), Confluent wire format без Schema Registry.
+# Avro-десериализация — кастомная (AvroDeserializer), чистый Avro без Schema Registry.
 grpc:
   server:
     port: 0
@@ -31,8 +31,11 @@ spring:
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     consumer:
-      group-id: analyzer
-      auto-offset-reset: earliest
+      # group.id генерируется динамически (UUID-суффикс) в KafkaConsumerConfig,
+      # чтобы каждый запуск получал новую группу и не наследовал offset'ы прошлых
+      # прогонов CI. auto-offset-reset=latest + seekToEnd пропускают старые битые
+      # сообщения в топике (см. паттерн в референс-решениях Danny1kk).
+      auto-offset-reset: latest
       enable-auto-commit: false
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
 

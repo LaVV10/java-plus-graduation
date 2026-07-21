@@ -1,8 +1,11 @@
 package ru.practicum.analyzer.config;
 
+import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.ApplicationRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.annotation.EnableKafka;
@@ -15,13 +18,21 @@ import ru.practicum.ewm.stats.avro.UserActionAvro;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * Настройка Kafka consumers для топиков {@code stats.user-actions.v1} и
- * {@code stats.events-similarity.v1}. Значения — Avro в Confluent wire format,
- * десериализуются через {@link AvroDeserializer} (без Schema Registry): класс схемы
- * задаётся прямо в конструкторе десериализатора для каждой фабрики.
+ * {@code stats.events-similarity.v1}. Значения — чистый Avro (без Confluent magic byte),
+ * десериализуются через {@link AvroDeserializer}.
+ *
+ * <p>Ключевой приём (как в референс-решении Danny1kk): group.id генерируется с
+ * UUID-суффиксом на каждый запуск + при старте offset перематывается в конец топика
+ * через {@code seekToEnd}. Это гарантирует, что новый запуск не унаследует offset'ы
+ * прошлых прогонов и не прочтёт старые битые сообщения из топика (актуально в CI
+ * Практикума, где Kafka-топики персистентны между тестами).
  */
+@Slf4j
 @EnableKafka
 @Configuration
 public class KafkaConsumerConfig {
@@ -29,15 +40,13 @@ public class KafkaConsumerConfig {
 	@Value("${spring.kafka.bootstrap-servers}")
 	private String bootstrapServers;
 
-	@Value("${spring.kafka.consumer.group-id:analyzer}")
-	private String groupId;
-
 	private Map<String, Object> baseProps() {
 		Map<String, Object> props = new HashMap<>();
 		props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
-		props.put(ConsumerConfig.GROUP_ID_CONFIG, groupId);
+		// UUID в group.id → новая consumer-группа каждый запуск → нет привязки к старым offset'ам.
+		props.put(ConsumerConfig.GROUP_ID_CONFIG, "analyzer-" + UUID.randomUUID());
 		props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
-		props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+		props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "latest");
 		props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false);
 		return props;
 	}
@@ -73,5 +82,37 @@ public class KafkaConsumerConfig {
 		factory.setConsumerFactory(consumerFactory);
 		factory.getContainerProperties().setAckMode(ContainerProperties.AckMode.RECORD);
 		return factory;
+	}
+
+	/**
+	 * При старте перематывает offset обоих топиков в конец — пропускает все накопленные
+	 * (потенциально битые от прошлых прогонов) сообщения. Новый consumer начнёт чтение
+	 * только с сообщений, появившихся после старта сервиса.
+	 */
+	@Bean
+	public ApplicationRunner seekToEndOnStartup(
+			ConsumerFactory<String, UserActionAvro> userActionConsumerFactory,
+			ConsumerFactory<String, EventSimilarityAvro> eventSimilarityConsumerFactory) {
+		return args -> {
+			seekToEnd(userActionConsumerFactory, "stats.user-actions.v1", "analyzer-reset-ua");
+			seekToEnd(eventSimilarityConsumerFactory, "stats.events-similarity.v1", "analyzer-reset-es");
+		};
+	}
+
+	private <V> void seekToEnd(ConsumerFactory<String, V> factory, String topic, String resetClientId) {
+		try (var consumer = factory.createConsumer(resetClientId, "reset")) {
+			var partitions = consumer.partitionsFor(topic).stream()
+					.map(p -> new TopicPartition(p.topic(), p.partition()))
+					.collect(Collectors.toList());
+			if (partitions.isEmpty()) {
+				return;
+			}
+			consumer.assign(partitions);
+			consumer.seekToEnd(partitions);
+			consumer.commitSync();
+			log.info("Analyzer consumer offset перемотан в конец топика {}", topic);
+		} catch (Exception e) {
+			log.warn("Не удалось перемотать offset топика {} (не критично): {}", topic, e.getMessage());
+		}
 	}
 }
