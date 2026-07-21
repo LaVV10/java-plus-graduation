@@ -4,12 +4,17 @@
 spring:
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    properties:
+      # Confluent Schema Registry — Avro wire format.
+      schema.registry.url: ${SCHEMA_REGISTRY_URL:http://localhost:8085}
+      auto.register.schemas: true
     streams:
       application-id: aggregator
       # Авто-создание changelog-топиков для state stores.
       state-dir: /tmp/kafka-streams
       properties:
         default.key.serde: org.apache.kafka.common.serialization.Serdes$StringSerde
-        default.value.serde: ru.practicum.aggregator.config.AvroSerdes
+        # default.value.serde НЕ задаём — для каждого потока serde указывается явно
+        # (Confluent Avro через KafkaAvroSerializer/Deserializer, см. AggregatorStreamsConfig#avroSerde).
         commit.interval.ms: 1000
         num.stream.threads: 1

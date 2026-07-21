@@ -105,10 +105,13 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
+      schema-registry:
+        condition: service_healthy
     environment:
       - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://discovery-server:8761/eureka
       - CONFIG_SERVER_URL=http://config-server:8888
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - SCHEMA_REGISTRY_URL=http://schema-registry:8085
       - SPRING_PROFILES_ACTIVE=docker
 
   aggregator:
@@ -125,10 +128,13 @@ services:
         condition: service_healthy
       kafka-topics-init:
         condition: service_completed_successfully
+      schema-registry:
+        condition: service_healthy
     environment:
       - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://discovery-server:8761/eureka
       - CONFIG_SERVER_URL=http://config-server:8888
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - SCHEMA_REGISTRY_URL=http://schema-registry:8085
       - SPRING_PROFILES_ACTIVE=docker
 
   analyzer:
@@ -145,12 +151,15 @@ services:
         condition: service_healthy
       kafka-topics-init:
         condition: service_completed_successfully
+      schema-registry:
+        condition: service_healthy
       analyzer-db:
         condition: service_healthy
     environment:
       - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://discovery-server:8761/eureka
       - CONFIG_SERVER_URL=http://config-server:8888
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - SCHEMA_REGISTRY_URL=http://schema-registry:8085
       - SPRING_DATASOURCE_URL=jdbc:postgresql://analyzer-db:5432/ewm_analyzer
       - SPRING_DATASOURCE_USERNAME=postgres
       - SPRING_DATASOURCE_PASSWORD=postgres
@@ -331,6 +340,31 @@ services:
       kafka-topics --bootstrap-server kafka:9092 --list
       "
     restart: "no"
+
+  # ─── Confluent Schema Registry (для Avro wire format) ────────────────
+  # Tester Практикумы ждёт сообщения в формате Confluent (magic byte 0 + schema-id + payload).
+  # Schema Registry хранит схемы и отдаёт их по id. Avro-схемы регистрируются автоматически
+  # при первом producer.send() через KafkaAvroSerializer.
+  schema-registry:
+    image: confluentinc/cp-schema-registry:7.6.1
+    container_name: ewm-schema-registry
+    depends_on:
+      kafka:
+        condition: service_healthy
+    ports:
+      - "8085:8085"
+    environment:
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: PLAINTEXT://kafka:9092
+      SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8085
+      # Avro-схемы регистрируются без аутентификации, один инстанс.
+      SCHEMA_REGISTRY_SCHEMA_REGISTRY_GROUP_ID: schema-registry
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8085/subjects"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
 
   # ─── UI для Kafka (опционально, отладка на http://localhost:8090) ─────
   kafka-ui:

@@ -50,6 +50,8 @@
 		<avro.version>1.11.3</avro.version>
 		<!-- Kafka (клиенты и Streams; spring-kafka выбирается Spring Boot BOM) -->
 		<kafka-clients.version>3.6.1</kafka-clients.version>
+		<!-- Confluent (Avro serde со Schema Registry) — версия синхронна с Kafka -->
+		<confluent.version>7.6.1</confluent.version>
 	</properties>
 
 	<dependencyManagement>
@@ -111,8 +113,31 @@
 				<artifactId>avro</artifactId>
 				<version>${avro.version}</version>
 			</dependency>
+			<!-- Confluent Avro-сериализатор со Schema Registry (канонический wire format,
+			     которого ждёт tester Практикума: magic byte 0 + schema-id + payload). -->
+			<dependency>
+				<groupId>io.confluent</groupId>
+				<artifactId>kafka-avro-serializer</artifactId>
+				<version>${confluent.version}</version>
+			</dependency>
 		</dependencies>
 	</dependencyManagement>
+
+	<!-- Confluent-репозиторий: io.confluent:* (kafka-avro-serializer и transitive).
+	     На Maven Central их нет — только в packages.confluent.io/maven. -->
+	<repositories>
+		<repository>
+			<id>confluent</id>
+			<url>https://packages.confluent.io/maven/</url>
+		</repository>
+	</repositories>
+
+	<pluginRepositories>
+		<pluginRepository>
+			<id>confluent-plugins</id>
+			<url>https://packages.confluent.io/maven/</url>
+		</pluginRepository>
+	</pluginRepositories>
 
 	<build>
 		<pluginManagement>

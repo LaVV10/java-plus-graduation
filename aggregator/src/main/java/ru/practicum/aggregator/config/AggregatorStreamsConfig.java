@@ -1,6 +1,13 @@
 package ru.practicum.aggregator.config;
 
+import io.confluent.kafka.serializers.KafkaAvroDeserializer;
+import io.confluent.kafka.serializers.KafkaAvroDeserializerConfig;
+import io.confluent.kafka.serializers.KafkaAvroSerializer;
+import io.confluent.kafka.serializers.KafkaAvroSerializerConfig;
+import org.apache.avro.specific.SpecificRecord;
+import org.apache.kafka.common.serialization.Deserializer;
 import org.apache.kafka.common.serialization.Serde;
+import org.apache.kafka.common.serialization.Serializer;
 import org.apache.kafka.common.serialization.Serdes;
 import org.apache.kafka.streams.StreamsBuilder;
 import org.apache.kafka.streams.StreamsConfig;
@@ -9,6 +16,7 @@ import org.apache.kafka.streams.kstream.KStream;
 import org.apache.kafka.streams.state.KeyValueStore;
 import org.apache.kafka.streams.state.StoreBuilder;
 import org.apache.kafka.streams.state.Stores;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.annotation.EnableKafkaStreams;
@@ -20,7 +28,9 @@ import ru.practicum.ewm.stats.avro.UserActionAvro;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 
@@ -63,6 +73,9 @@ public class AggregatorStreamsConfig {
 	static final String PROCESSOR_NODE = "similarity-processor";
 	static final String SINK_NODE = "similarity-sink";
 
+	@Value("${spring.kafka.properties.schema.registry.url}")
+	private String schemaRegistryUrl;
+
 	/**
 	 * Донастраивает {@link org.springframework.kafka.config.StreamsBuilderFactoryBean}:
 	 * application.id (groupId Streams-приложения) и exactly-once.
@@ -81,6 +94,42 @@ public class AggregatorStreamsConfig {
 	}
 
 	/**
+	 * Создаёт Confluent Avro serde для Avro-сообщений.
+	 *
+	 * <p>Использует {@link KafkaAvroSerializer}/{@link KafkaAvroDeserializer} с
+	 * {@code schema.registry.url} и {@code specific.avro.reader=true} (вернуть
+	 * {@link SpecificRecord}, а не {@code GenericRecord}). Wire format — Confluent
+	 * (magic byte 0 + schema-id + payload), его ждут tester и Analyzer.
+	 *
+	 * <p>Возвращает {@code Serde<SpecificRecord>} — общего предка всех Avro-классов.
+	 * Confluent-десериализатор с {@code specific.avro.reader=true} сам определяет
+	 * конкретный класс по схеме из payload (через {@code avro.schema}), поэтому
+	 * в точках использования тип безопасно сужается до {@link UserActionAvro} или
+	 * {@link EventSimilarityAvro}.
+	 */
+	@SuppressWarnings({"rawtypes", "unchecked"})
+	private Serde<SpecificRecord> avroSerde() {
+		Map<String, Object> cfg = new HashMap<>();
+		cfg.put(KafkaAvroSerializerConfig.SCHEMA_REGISTRY_URL_CONFIG, schemaRegistryUrl);
+		cfg.put(KafkaAvroSerializerConfig.AUTO_REGISTER_SCHEMAS, true);
+		cfg.put(KafkaAvroDeserializerConfig.SPECIFIC_AVRO_READER_CONFIG, true);
+
+		// KafkaAvroSerializer implements Serializer<Object>, а не Serializer<SpecificRecord> —
+		// прямое присвоение не проходит. Приводим через raw-тип (в рантайме generics стираются,
+		// поэтому cast безопасен: и Object, и SpecificRecord совместимы с Avro-payload).
+		KafkaAvroSerializer rawSerializer = new KafkaAvroSerializer();
+		rawSerializer.configure(cfg, false);
+		Serializer<SpecificRecord> serializer = (Serializer<SpecificRecord>) (Serializer) rawSerializer;
+
+		KafkaAvroDeserializer rawDeserializer = new KafkaAvroDeserializer();
+		rawDeserializer.configure(cfg, false);
+		Deserializer<SpecificRecord> deserializer =
+				(Deserializer<SpecificRecord>) (Deserializer) rawDeserializer;
+
+		return Serdes.serdeFrom(serializer, deserializer);
+	}
+
+	/**
 	 * Описывает topology: source-поток {@code stats.user-actions.v1} → процессор
 	 * (4 state stores) → {@code stats.events-similarity.v1}.
 	 *
@@ -96,9 +145,13 @@ public class AggregatorStreamsConfig {
 	 * @param builder бин {@link StreamsBuilder}, предоставляемый Spring Kafka auto-config
 	 */
 	@Bean
+	@SuppressWarnings({"rawtypes", "unchecked"})
 	public KStream<String, EventSimilarityAvro> aggregatorTopology(StreamsBuilder builder) {
 		Serde<Set<Integer>> setSerde = Serdes.serdeFrom(new JsonSetSerializer(), new JsonSetDeserializer());
-		Serde<UserActionAvro> avroSerde = AvroSerdes.forClass(UserActionAvro.class);
+		// Confluent serde работает с конкретным Avro-классом по схеме payload (specific.avro.reader),
+		// поэтому тип безопасно сужается в точках потребления через raw-приведение.
+		Serde inputSerde = avroSerde();
+		Serde outputSerde = avroSerde();
 
 		// ─── State stores (key-value, persistent, с changelog-топиком) ──
 		builder.addStateStore(Stores.keyValueStoreBuilder(
@@ -112,16 +165,15 @@ public class AggregatorStreamsConfig {
 
 		// ─── Граф: stream → process → to ────────────────────────────────
 		KStream<String, UserActionAvro> source = builder.stream(
-				USER_ACTIONS_TOPIC, Consumed.with(Serdes.String(), avroSerde));
+				USER_ACTIONS_TOPIC, Consumed.with(Serdes.String(), inputSerde));
 
 		KStream<String, EventSimilarityAvro> similarities = source.process(
 				() -> new SimilarityProcessor(USER_ACTION_STORE, EVENT_WEIGHTS_STORE,
 						EVENTS_BY_USER_STORE, SIMILARITY_STORE),
 				USER_ACTION_STORE, EVENT_WEIGHTS_STORE, EVENTS_BY_USER_STORE, SIMILARITY_STORE);
 
-		Serde<EventSimilarityAvro> outSerde = AvroSerdes.forClass(EventSimilarityAvro.class);
 		similarities.to(EVENTS_SIMILARITY_TOPIC,
-				org.apache.kafka.streams.kstream.Produced.with(Serdes.String(), outSerde));
+				org.apache.kafka.streams.kstream.Produced.with(Serdes.String(), outputSerde));
 
 		return similarities;
 	}

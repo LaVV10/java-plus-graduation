@@ -29,11 +29,17 @@ spring:
     password: ${SPRING_DATASOURCE_PASSWORD:postgres}
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    properties:
+      # Confluent Schema Registry — Avro wire format.
+      schema.registry.url: ${SCHEMA_REGISTRY_URL:http://localhost:8085}
     consumer:
       group-id: analyzer
       auto-offset-reset: earliest
       enable-auto-commit: false
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: io.confluent.kafka.serializers.KafkaAvroDeserializer
+      properties:
+        specific.avro.reader: true
 
 app:
   kafka:

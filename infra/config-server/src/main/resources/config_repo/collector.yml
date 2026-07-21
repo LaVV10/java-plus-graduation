@@ -9,10 +9,14 @@ spring:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
-      value-serializer: ru.practicum.collector.config.AvroSerializer
+      value-serializer: io.confluent.kafka.serializers.KafkaAvroSerializer
       acks: "1"
       retries: 3
       properties:
         linger.ms: 0
+    properties:
+      # Confluent Schema Registry — без него KafkaAvroSerializer не работает.
+      schema.registry.url: ${SCHEMA_REGISTRY_URL:http://localhost:8085}
+      auto.register.schemas: true
     topic:
       user-actions: stats.user-actions.v1
