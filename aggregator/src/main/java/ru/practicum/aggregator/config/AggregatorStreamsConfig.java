@@ -73,7 +73,7 @@ public class AggregatorStreamsConfig {
 	static final String PROCESSOR_NODE = "similarity-processor";
 	static final String SINK_NODE = "similarity-sink";
 
-	@Value("${app.kafka.schema-registry-url:${SCHEMA_REGISTRY_URL:http://localhost:8085}}")
+	@Value("${app.kafka.schema-registry-url:${SCHEMA_REGISTRY_URL:http://localhost:8081}}")
 	private String schemaRegistryUrl;
 
 	/**

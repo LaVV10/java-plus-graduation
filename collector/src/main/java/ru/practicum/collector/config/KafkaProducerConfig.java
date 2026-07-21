@@ -36,7 +36,7 @@ public class KafkaProducerConfig {
 	@Value("${spring.kafka.bootstrap-servers}")
 	private String bootstrapServers;
 
-	@Value("${app.kafka.schema-registry-url:${SCHEMA_REGISTRY_URL:http://localhost:8085}}")
+	@Value("${app.kafka.schema-registry-url:${SCHEMA_REGISTRY_URL:http://localhost:8081}}")
 	private String schemaRegistryUrl;
 
 	@Bean

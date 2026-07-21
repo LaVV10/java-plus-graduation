@@ -41,7 +41,7 @@ public class KafkaConsumerConfig {
 	@Value("${spring.kafka.consumer.group-id:analyzer}")
 	private String groupId;
 
-	@Value("${app.kafka.schema-registry-url:${SCHEMA_REGISTRY_URL:http://localhost:8085}}")
+	@Value("${app.kafka.schema-registry-url:${SCHEMA_REGISTRY_URL:http://localhost:8081}}")
 	private String schemaRegistryUrl;
 
 	private Map<String, Object> baseProps() {

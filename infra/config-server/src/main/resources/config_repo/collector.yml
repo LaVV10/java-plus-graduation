@@ -7,7 +7,7 @@ grpc:
 # Top-level свойства (надёжнее читаются через @Value, чем spring.kafka.properties.* с точками).
 app:
   kafka:
-    schema-registry-url: ${SCHEMA_REGISTRY_URL:http://localhost:8085}
+    schema-registry-url: ${SCHEMA_REGISTRY_URL:http://localhost:8081}
 
 spring:
   kafka:
@@ -21,7 +21,7 @@ spring:
         linger.ms: 0
     properties:
       # Дублируется в Kafka producer config — на случай если клиент читает напрямую.
-      schema.registry.url: ${SCHEMA_REGISTRY_URL:http://localhost:8085}
+      schema.registry.url: ${SCHEMA_REGISTRY_URL:http://localhost:8081}
       auto.register.schemas: true
     topic:
       user-actions: stats.user-actions.v1
