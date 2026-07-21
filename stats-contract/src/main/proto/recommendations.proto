@@ -34,8 +34,8 @@ message InteractionsCountRequestProto {
 message RecommendedEventProto {
   // Идентификатор мероприятия.
   int64 event_id = 1;
-  // Оценка/сходство/сумма весов (см. описание метода).
-  float score = 2;
+  // Оценка/сходство/сумма весов (см. описание метода). double — как в референс-решении.
+  double score = 2;
 }
 
 // gRPC-сервис рекомендаций (Analyzer).

@@ -18,9 +18,10 @@ import java.util.Map;
  * {@code stats.user-actions.v1}.
  *
  * <p>Ключ — строковое представление userId (гарантирует ко-партиционирование действий
- * одного пользователя). Значение сериализуется через {@link AvroSerializer} в Confluent
- * wire format (magic byte 0 + schema-id + Avro-payload) — этого формата ждёт tester
- * Практикума. Schema Registry НЕ используется (тестиру достаточно magic byte + payload).
+ * одного пользователя). Значение сериализуется через {@link AvroSerializer} в чистый
+ * Avro binary format (без Confluent magic byte и schema-id) — именно этот формат
+ * ожидает tester Практикума ({@code BaseAvroDeserializer.binaryDecoder(data, null)}).
+ * Schema Registry НЕ используется.
  */
 @Configuration
 public class KafkaProducerConfig {

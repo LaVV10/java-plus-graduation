@@ -449,7 +449,7 @@ public class EventServiceImpl implements EventService {
 		List<RecommendedEventProto> ratings = analyzerClient.getInteractionsCountSafe(ids);
 		Map<Long, Double> ratingById = ratings.stream()
 				.collect(Collectors.toMap(RecommendedEventProto::getEventId,
-						r -> (double) r.getScore(), (a, b) -> a));
+						RecommendedEventProto::getScore, (a, b) -> a));
 		events.forEach(dto -> dto.setRating(ratingById.getOrDefault(dto.getId(), 0.0)));
 	}
 

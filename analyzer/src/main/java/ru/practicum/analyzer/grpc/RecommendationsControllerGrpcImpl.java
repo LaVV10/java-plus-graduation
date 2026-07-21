@@ -75,7 +75,7 @@ public class RecommendationsControllerGrpcImpl
 		for (RecommendedEvent e : events) {
 			responseObserver.onNext(RecommendedEventProto.newBuilder()
 					.setEventId(e.eventId())
-					.setScore((float) e.score())
+					.setScore(e.score())
 					.build());
 		}
 		responseObserver.onCompleted();

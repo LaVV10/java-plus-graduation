@@ -108,7 +108,7 @@ services:
     environment:
       - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://discovery-server:8761/eureka
       - CONFIG_SERVER_URL=http://config-server:8888
-      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
       - SPRING_PROFILES_ACTIVE=docker
 
   aggregator:
@@ -128,7 +128,7 @@ services:
     environment:
       - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://discovery-server:8761/eureka
       - CONFIG_SERVER_URL=http://config-server:8888
-      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
       - SPRING_PROFILES_ACTIVE=docker
 
   analyzer:
@@ -150,7 +150,7 @@ services:
     environment:
       - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://discovery-server:8761/eureka
       - CONFIG_SERVER_URL=http://config-server:8888
-      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
       - SPRING_DATASOURCE_URL=jdbc:postgresql://analyzer-db:5432/ewm_analyzer
       - SPRING_DATASOURCE_USERNAME=postgres
       - SPRING_DATASOURCE_PASSWORD=postgres
@@ -279,21 +279,29 @@ services:
 
   # ─── Apache Kafka (KRaft, без Zookeeper) ──────────────────────────────
   # Один брокер достаточен для диплома. KRaft-режим хранит метаданные внутри Kafka.
+  #
+  # ДВА listener'а (как в референс-решении ihonhola/java-explore-with-me-plus):
+  #   - PLAINTEXT://kafka:29092 — внутри docker-сети (сервисы ходят на kafka:29092).
+  #   - PLAINTEXT_HOST://localhost:9092 — с хоста runner'а CI Практикума, где
+  #     запускается tester-0.0.1.jar. Без этого listener'а Kafka отдаёт в metadata
+  #     адрес kafka:9092, который хост не резолвит → Connection refused.
   kafka:
     image: confluentinc/cp-kafka:7.6.1
+    hostname: kafka
     container_name: ewm-kafka
     ports:
-      - "9092:9092"   # внутренний (docker-сеть) + хостовый доступ
-      - "9093:9093"   # controller-порт (KRaft)
+      - "9092:9092"   # PLAINTEXT_HOST — доступ с хоста (tester, отладка)
+      - "29092:29092" # PLAINTEXT — внутри docker-сети (сервисы)
     environment:
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: "broker,controller"
-      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
-      # Внутри docker-сети сервисы ходят на kafka:9092; с хоста — на localhost:9092.
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      # Три listener'а: внутренний (PLAINTEXT), хостовый (PLAINTEXT_HOST), контроллер (CONTROLLER).
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,CONTROLLER://0.0.0.0:29093,PLAINTEXT_HOST://0.0.0.0:9092
+      # Advertised: docker-сеть видит kafka:29092, хост видит localhost:9092.
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
-      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:29093"
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
@@ -322,13 +330,13 @@ services:
     entrypoint: ["/bin/sh", "-c"]
     command: |
       "
-      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists \
+      kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists \
         --topic stats.user-actions.v1 --partitions 1 --replication-factor 1 \
         --config cleanup.policy=compact,delete && \
-      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists \
+      kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists \
         --topic stats.events-similarity.v1 --partitions 1 --replication-factor 1 \
         --config cleanup.policy=compact,delete && \
-      kafka-topics --bootstrap-server kafka:9092 --list
+      kafka-topics --bootstrap-server kafka:29092 --list
       "
     restart: "no"
 
@@ -369,7 +377,7 @@ services:
       - "8090:8080"
     environment:
       KAFKA_CLUSTERS_0_NAME: ewm
-      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
 
   # ─── БД сервиса рекомендаций (Analyzer) ───────────────────────────────
   analyzer-db:
