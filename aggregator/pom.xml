@@ -59,12 +59,6 @@
 			<artifactId>stats-contract</artifactId>
 		</dependency>
 
-		<!-- Confluent Avro-сериализатор со Schema Registry (читаем/пишем wire format Confluent). -->
-		<dependency>
-			<groupId>io.confluent</groupId>
-			<artifactId>kafka-avro-serializer</artifactId>
-		</dependency>
-
 		<dependency>
 			<groupId>org.projectlombok</groupId>
 			<artifactId>lombok</artifactId>

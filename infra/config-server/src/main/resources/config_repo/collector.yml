@@ -4,24 +4,16 @@ grpc:
   server:
     port: 0
 
-# Top-level свойства (надёжнее читаются через @Value, чем spring.kafka.properties.* с точками).
-app:
-  kafka:
-    schema-registry-url: ${SCHEMA_REGISTRY_URL:http://localhost:8081}
-
 spring:
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    # Сериализаторы указываются в KafkaProducerConfig (AvroSerializer — кастомный,
+    # Confluent wire format без Schema Registry).
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
-      value-serializer: io.confluent.kafka.serializers.KafkaAvroSerializer
       acks: "1"
       retries: 3
       properties:
         linger.ms: 0
-    properties:
-      # Дублируется в Kafka producer config — на случай если клиент читает напрямую.
-      schema.registry.url: ${SCHEMA_REGISTRY_URL:http://localhost:8081}
-      auto.register.schemas: true
     topic:
       user-actions: stats.user-actions.v1
