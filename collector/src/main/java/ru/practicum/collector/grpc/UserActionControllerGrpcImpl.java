@@ -41,10 +41,23 @@ public class UserActionControllerGrpcImpl extends UserActionControllerGrpc.UserA
 				request.getUserId(), request.getEventId(),
 				request.getActionType(), request.getTimestamp());
 
-		UserActionAvro avro = mapToAvro(request);
-		String key = String.valueOf(request.getUserId());
+		try {
+			UserActionAvro avro = mapToAvro(request);
+			String key = String.valueOf(request.getUserId());
 
-		kafkaTemplate.send(userActionsTopic, key, avro);
+			// send() синхронно сериализует (KafkaAvroSerializer) и кладёт в буфер продюсера.
+			// Если Schema Registry недоступен или неверный url — упадёт здесь с исключением.
+			kafkaTemplate.send(userActionsTopic, key, avro).get();
+		} catch (Exception e) {
+			log.error("Не удалось записать действие пользователя в Kafka: userId={}, eventId={}, action={}",
+					request.getUserId(), request.getEventId(), request.getActionType(), e);
+			// Возвращаем в gRPC статус INTERNAL с описанием — иначе tester видит лишь UNKNOWN.
+			responseObserver.onError(io.grpc.Status.INTERNAL
+					.withDescription("Не удалось записать действие в Kafka: " + e.getMessage())
+					.withCause(e)
+					.asRuntimeException());
+			return;
+		}
 
 		responseObserver.onNext(com.google.protobuf.Empty.getDefaultInstance());
 		responseObserver.onCompleted();

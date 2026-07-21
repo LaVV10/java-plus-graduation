@@ -1,11 +1,17 @@
 # Конфигурация aggregator, раздаваемая через Config Server.
 # Kafka Streams приложение: читает stats.user-actions.v1, пишет stats.events-similarity.v1.
 # application.id берётся из application.properties (см. AggregatorStreamsConfig).
+
+# Top-level свойство — читается через @Value в AggregatorStreamsConfig.
+app:
+  kafka:
+    schema-registry-url: ${SCHEMA_REGISTRY_URL:http://localhost:8085}
+
 spring:
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     properties:
-      # Confluent Schema Registry — Avro wire format.
+      # Дублируется для Kafka-клиента.
       schema.registry.url: ${SCHEMA_REGISTRY_URL:http://localhost:8085}
       auto.register.schemas: true
     streams:

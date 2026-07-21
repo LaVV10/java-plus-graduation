@@ -24,6 +24,11 @@ import java.util.Map;
  * (wire format: magic byte 0 + schema-id + Avro-payload) — этого формата ждут tester
  * Практикума, Aggregator и Analyzer. Схема регистрируется в Schema Registry автоматически
  * при первом {@code send()}.
+ *
+ * <p>Адрес Schema Registry берётся из {@code app.kafka.schema-registry-url} (по умолчанию
+ * из env {@code SCHEMA_REGISTRY_URL}). Использование отдельного top-level ключа надёжнее,
+ * чем {@code spring.kafka.properties.*}: relaxed binding применительно к вложенным точкам
+ * иногда капризничает.
  */
 @Configuration
 public class KafkaProducerConfig {
@@ -31,7 +36,7 @@ public class KafkaProducerConfig {
 	@Value("${spring.kafka.bootstrap-servers}")
 	private String bootstrapServers;
 
-	@Value("${spring.kafka.properties.schema.registry.url}")
+	@Value("${app.kafka.schema-registry-url:${SCHEMA_REGISTRY_URL:http://localhost:8085}}")
 	private String schemaRegistryUrl;
 
 	@Bean
@@ -55,3 +60,4 @@ public class KafkaProducerConfig {
 		return new KafkaTemplate<>(producerFactory);
 	}
 }
+

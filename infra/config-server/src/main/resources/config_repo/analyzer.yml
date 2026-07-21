@@ -43,6 +43,8 @@ spring:
 
 app:
   kafka:
+    # Top-level свойство — читается через @Value в KafkaConsumerConfig.
+    schema-registry-url: ${SCHEMA_REGISTRY_URL:http://localhost:8085}
     topics:
       user-actions: stats.user-actions.v1
       events-similarity: stats.events-similarity.v1
