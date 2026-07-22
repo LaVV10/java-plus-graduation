@@ -9,7 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Юнит-тесты математики косинусного сходства (инкрементальная форма по ТЗ Этапа 3-1).
  *
- * <p>Проверяет: веса действий, формулу {@code similarity = S_min / (S_a * S_b)},
+ * <p>Проверяет: веса действий, формулу {@code similarity = S_min / (sqrt(S_a) * sqrt(S_b))},
  * граничные случаи (нулевые суммы), а также сквозной ручной сценарий пересчёта
  * частных сумм при приходе новых действий — именно то, что делает SimilarityProcessor.
  */
@@ -37,20 +37,18 @@ class SimilarityCalculatorTest {
 		// w_u2_A = 1.0 (LIKE),     w_u2_B = 0.8 (REGISTER)
 		// S_min(A,B) = min(0.8,0.4) + min(1.0,0.8) = 0.4 + 0.8 = 1.2
 		// S_A = 0.8 + 1.0 = 1.8 ; S_B = 0.4 + 0.8 = 1.2
-		// similarity = 1.2 / (1.8 * 1.2) = 1.2 / 2.16 ≈ 0.5555...
+		// similarity = 1.2 / (sqrt(1.8) * sqrt(1.2)) = 1.2 / (1.342 * 1.095) ≈ 0.816
 		double sMin = 1.2;
 		double sA = 1.8;
 		double sB = 1.2;
-		double expected = sMin / (sA * sB);
+		double expected = sMin / (Math.sqrt(sA) * Math.sqrt(sB));
 		assertEquals(expected, SimilarityCalculator.similarity(sMin, sA, sB), 1e-9);
-		assertTrue(expected > 0.5 && expected < 0.6, "сходство должно попасть в (0.5, 0.6)");
+		assertTrue(expected > 0.8 && expected < 0.85, "сходство должно попасть в (0.8, 0.85)");
 	}
 
 	@Test
 	void similarity_isInUnitRange_forTypicalWeights() {
-		// Все веса ∈ [0,1], значит S_min ≤ S_a и S_min ≤ S_b ⇒
-		// similarity = S_min/(S_a*S_b) = S_min/(S_a*S_b). При единичных суммах ≤ 1.
-		// Проверяем просто что результат неотрицателен и ≤ 1 для типичных значений.
+		// Косинусное сходство по построению ∈ [0,1]. Проверяем для типичных значений.
 		double score = SimilarityCalculator.similarity(0.3, 0.8, 0.6);
 		assertTrue(score >= 0.0 && score <= 1.0, "сходство вне [0,1]: " + score);
 	}
@@ -83,7 +81,7 @@ class SimilarityCalculatorTest {
 		double sA = 0.8 + 1.0; // = 1.8
 		double sB = 0.4 + 0.8; // = 1.2
 		double sMinExpected = Math.min(0.8, 0.4) + Math.min(1.0, 0.8); // = 1.2
-		double scoreExpected = sMinExpected / (sA * sB);
+		double scoreExpected = sMinExpected / (Math.sqrt(sA) * Math.sqrt(sB));
 
 		double sMinActual = similarity.getOrDefault("1:2", 0.0);
 		double sAactual = eventWeights.getOrDefault(1, 0.0);

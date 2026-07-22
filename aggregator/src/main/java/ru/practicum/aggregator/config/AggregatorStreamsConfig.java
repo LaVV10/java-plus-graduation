@@ -234,6 +234,9 @@ public class AggregatorStreamsConfig {
 				similarityStore.put(pairKey, sMin);
 
 				double score = SimilarityCalculator.similarity(sMin, sA, sB);
+				// Округление до 6 знаков после запятой — как в референс-решениях Danny1kk:
+				// tester Практикума сравнивает score с фиксированной точностью.
+				score = Math.round(score * 1_000_000.0) / 1_000_000.0;
 				EventSimilarityAvro out = buildSimilarity(eventId, other, score, timestamp);
 				// forward нового API принимает Record; timestamp берём из исходной записи.
 				context.forward(new org.apache.kafka.streams.processor.api.Record<>(
