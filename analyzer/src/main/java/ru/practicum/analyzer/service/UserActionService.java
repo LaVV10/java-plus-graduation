@@ -27,8 +27,8 @@ public class UserActionService {
 		if (avro == null) {
 			return;
 		}
-		Long userId = (long) avro.getUserId();
-		Long eventId = (long) avro.getEventId();
+		Long userId = avro.getUserId();
+		Long eventId = avro.getEventId();
 		double weight = weightOf(avro.getActionType());
 
 		UserActionId id = new UserActionId(userId, eventId);

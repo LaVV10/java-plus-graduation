@@ -7,8 +7,8 @@ grpc:
 spring:
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
-    # Сериализаторы указываются в KafkaProducerConfig (AvroSerializer — кастомный,
-    # Confluent wire format без Schema Registry).
+    # value-serializer задаётся в KafkaProducerConfig.java через AvroSerializer.class
+    # (чистый Avro binary без Confluent magic byte/schema-id — этого формата ждёт tester Практикума).
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       acks: "1"

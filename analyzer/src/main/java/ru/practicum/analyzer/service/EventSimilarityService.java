@@ -27,8 +27,8 @@ public class EventSimilarityService {
 		if (avro == null) {
 			return;
 		}
-		Long eventA = (long) avro.getEventA();
-		Long eventB = (long) avro.getEventB();
+		Long eventA = avro.getEventA();
+		Long eventB = avro.getEventB();
 		EventSimilarityId id = new EventSimilarityId(eventA, eventB);
 		EventSimilarity entity = eventSimilarityRepository.findById(id).orElseGet(EventSimilarity::new);
 		entity.setEventA(eventA);
