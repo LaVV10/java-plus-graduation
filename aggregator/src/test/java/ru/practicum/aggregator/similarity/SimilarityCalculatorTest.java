@@ -6,13 +6,6 @@ import ru.practicum.ewm.stats.avro.ActionTypeAvro;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/**
- * Юнит-тесты математики косинусного сходства (инкрементальная форма по ТЗ Этапа 3-1).
- *
- * <p>Проверяет: веса действий, формулу {@code similarity = S_min / (sqrt(S_a) * sqrt(S_b))},
- * граничные случаи (нулевые суммы), а также сквозной ручной сценарий пересчёта
- * частных сумм при приходе новых действий — именно то, что делает SimilarityProcessor.
- */
 class SimilarityCalculatorTest {
 
 	@Test
@@ -24,7 +17,6 @@ class SimilarityCalculatorTest {
 
 	@Test
 	void similarity_zero_whenAnySumIsZero() {
-		// Если хотя бы одно мероприятие не имеет взаимодействий — сходство 0.
 		assertEquals(0.0, SimilarityCalculator.similarity(0.5, 0.0, 1.0), 1e-9);
 		assertEquals(0.0, SimilarityCalculator.similarity(0.5, 1.0, 0.0), 1e-9);
 		assertEquals(0.0, SimilarityCalculator.similarity(0.5, 0.0, 0.0), 1e-9);
@@ -32,12 +24,6 @@ class SimilarityCalculatorTest {
 
 	@Test
 	void similarity_matchesManualComputation() {
-		// Сценарий: 2 пользователя, оба взаимодействовали с обоими мероприятиями A и B.
-		// w_u1_A = 0.8 (REGISTER), w_u1_B = 0.4 (VIEW)
-		// w_u2_A = 1.0 (LIKE),     w_u2_B = 0.8 (REGISTER)
-		// S_min(A,B) = min(0.8,0.4) + min(1.0,0.8) = 0.4 + 0.8 = 1.2
-		// S_A = 0.8 + 1.0 = 1.8 ; S_B = 0.4 + 0.8 = 1.2
-		// similarity = 1.2 / (sqrt(1.8) * sqrt(1.2)) = 1.2 / (1.342 * 1.095) ≈ 0.816
 		double sMin = 1.2;
 		double sA = 1.8;
 		double sB = 1.2;
@@ -53,15 +39,8 @@ class SimilarityCalculatorTest {
 		assertTrue(score >= 0.0 && score <= 1.0, "сходство вне [0,1]: " + score);
 	}
 
-	/**
-	 * Сквозной сценарий инкрементального обновления «вручную», повторяющий логику
-	 * SimilarityProcessor, но без Kafka. Гарантирует, что формула сходится к
-	 * ожидаемому значению после серии обновлений.
-	 */
 	@Test
 	void incrementalUpdate_convergesToFullRecalculation() {
-		// 2 мероприятия (A=1, B=2), 2 пользователя.
-		// Подадим действия по очереди и просуммируем частные суммы так же, как processor.
 		java.util.Map<String, Double> userAction = new java.util.HashMap<>();
 		java.util.Map<Integer, Double> eventWeights = new java.util.HashMap<>();
 		java.util.Map<String, Double> similarity = new java.util.HashMap<>();
@@ -94,12 +73,6 @@ class SimilarityCalculatorTest {
 		double scoreActual = SimilarityCalculator.similarity(sMinActual, sAactual, sBactual);
 		assertEquals(scoreExpected, scoreActual, 1e-9);
 	}
-
-	/**
-	 * Применяет одно действие пользователя, инкрементально обновляя частные суммы,
-	 * в точности повторяя логику SimilarityProcessor (только для пары событий A,B).
-	 * Считаем, что каждый пользователь взаимодействует ровно с двумя событиями {1,2}.
-	 */
 	@SuppressWarnings("checkstyle:ParameterNumber")
 	private static void apply(java.util.Map<String, Double> userAction,
 							  java.util.Map<Integer, Double> eventWeights,
