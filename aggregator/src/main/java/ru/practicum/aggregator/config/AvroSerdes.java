@@ -17,31 +17,17 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 
 /**
- * Утилита Serde для Avro-записей {@link SpecificRecord} — чистый Avro binary, без Confluent
- * wire format.
- *
- * <p>Тестер Практикума использует {@code ru.practicum.kafka.deserializer.BaseAvroDeserializer},
- * который читает payload с первого байта через {@code DecoderFactory.binaryDecoder(data, null)} —
- * без magic byte и schema-id. Поэтому сериализуем «голый» Avro-payload.
- *
- * <p>Совпадает с {@code ru.practicum.kafka.serializer.GeneralAvroSerializer} /
- * {@code BaseAvroDeserializer} из {@code avro-schemas.jar} тестера.
+ * Serde для Avro-записей {@link SpecificRecord} в чистый binary-формат.
  */
 public final class AvroSerdes {
 
 	private AvroSerdes() {
 	}
 
-	/**
-	 * Создаёт Serde для конкретного Avro-класса.
-	 */
 	public static <T extends SpecificRecord> Serde<T> forClass(Class<T> clazz) {
 		return Serdes.serdeFrom(new AvroSerdeSerializer<>(), new AvroSerdeDeserializer<>(clazz));
 	}
 
-	/**
-	 * Сериализатор: SpecificRecord → чистый Avro-payload.
-	 */
 	public static class AvroSerdeSerializer<T extends SpecificRecord> implements Serializer<T> {
 		@Override
 		public byte[] serialize(String topic, T data) {
@@ -61,9 +47,6 @@ public final class AvroSerdes {
 		}
 	}
 
-	/**
-	 * Десериализатор: чистый Avro-payload → SpecificRecord.
-	 */
 	public static class AvroSerdeDeserializer<T extends SpecificRecord> implements Deserializer<T> {
 		private final Class<T> clazz;
 

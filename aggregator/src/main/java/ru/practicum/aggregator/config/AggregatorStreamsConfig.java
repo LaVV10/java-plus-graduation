@@ -27,31 +27,14 @@ import java.util.UUID;
 /**
  * Топология Kafka Streams сервиса Aggregator.
  *
- * <p>Поток обработки:
- * <pre>
- *   stats.user-actions.v1  ──►  source("user-actions-source")
- *                                    │
- *                                    ▼
- *                              processor("similarity-processor")
- *                                    │ читает/обновляет 4 state stores:
- *                                    │   user-action-store   "userId:eventId" → макс. вес
- *                                    │   event-weights-store eventId          → S_a (сумма весов)
- *                                    │   events-by-user-store userId          → Set&lt;eventId&gt;
- *                                    │   similarity-store     "a:b" (a&lt;b)      → S_min(a,b)
- *                                    ▼
- *                              sink("similarity-sink")  ──►  stats.events-similarity.v1
- * </pre>
- *
- * <p>State stores персистентные с changelog-топиками (префикс {@code aggregator-}),
- * создаваемыми Kafka Streams автоматически — состояние восстанавливается после рестарта.
+ * <p>Поток: {@code stats.user-actions.v1} → пересчёт сходства → {@code stats.events-similarity.v1}.
+ * Состояние хранится в четырёх persistent KeyValueStore с changelog-топиками.
  */
 @Configuration
 @EnableKafkaStreams
 public class AggregatorStreamsConfig {
 
-	/** Входной топик действий пользователей. */
 	public static final String USER_ACTIONS_TOPIC = "stats.user-actions.v1";
-	/** Выходной топик сходства мероприятий. */
 	public static final String EVENTS_SIMILARITY_TOPIC = "stats.events-similarity.v1";
 
 	static final String USER_ACTION_STORE = "user-action-store";
@@ -59,19 +42,6 @@ public class AggregatorStreamsConfig {
 	static final String EVENTS_BY_USER_STORE = "events-by-user-store";
 	static final String SIMILARITY_STORE = "similarity-store";
 
-	static final String SOURCE_NODE = "user-actions-source";
-	static final String PROCESSOR_NODE = "similarity-processor";
-	static final String SINK_NODE = "similarity-sink";
-
-	/**
-	 * Донастраивает {@link org.springframework.kafka.config.StreamsBuilderFactoryBean}:
-	 * application.id (groupId Streams-приложения) с UUID-суффиксом и exactly-once.
-	 *
-	 * <p>UUID-суффикс в application.id — ключевой приём (как в референс-решениях):
-	 * каждый запуск получает уникальный id → Streams создаёт новые changelog-топики
-	 * и state directory → не наследует состояние/offset'ы прошлых прогонов CI,
-	 * где в Kafka могли остаться битые сообщения.
-	 */
 	@Bean
 	public StreamsBuilderFactoryBeanConfigurer streamsBuilderFactoryBeanConfigurer() {
 		return factory -> {
@@ -85,26 +55,12 @@ public class AggregatorStreamsConfig {
 		};
 	}
 
-	/**
-	 * Описывает topology: source-поток {@code stats.user-actions.v1} → процессор
-	 * (4 state stores) → {@code stats.events-similarity.v1}.
-	 *
-	 * <p>Реализуется через DSL {@link StreamsBuilder}, который Spring Kafka Streams
-	 * (через {@code @EnableKafkaStreams} + {@code defaultKafkaStreamsBuilder}) наполняет
-	 * и потом сам вызывает {@code builder.build()}.
-	 *
-	 * <p>Avro-сериализация — чистый Avro binary без Schema Registry через
-	 * {@link AvroSerdes#forClass(Class)}: этого формата ждёт tester Практикума.
-	 *
-	 * @param builder бин {@link StreamsBuilder}, предоставляемый Spring Kafka auto-config
-	 */
 	@Bean
 	public KStream<String, EventSimilarityAvro> aggregatorTopology(StreamsBuilder builder) {
 		Serde<Set<Long>> setSerde = Serdes.serdeFrom(new JsonSetSerializer(), new JsonSetDeserializer());
 		Serde<UserActionAvro> inputSerde = AvroSerdes.forClass(UserActionAvro.class);
 		Serde<EventSimilarityAvro> outputSerde = AvroSerdes.forClass(EventSimilarityAvro.class);
 
-		// ─── State stores (key-value, persistent, с changelog-топиком) ──
 		builder.addStateStore(Stores.keyValueStoreBuilder(
 				Stores.persistentKeyValueStore(USER_ACTION_STORE), Serdes.String(), Serdes.Double()));
 		builder.addStateStore(Stores.keyValueStoreBuilder(
@@ -114,9 +70,6 @@ public class AggregatorStreamsConfig {
 		builder.addStateStore(Stores.keyValueStoreBuilder(
 				Stores.persistentKeyValueStore(SIMILARITY_STORE), Serdes.String(), Serdes.Double()));
 
-		// ─── Граф: stream → process → to ────────────────────────────────
-		// Ключ входного топика — Long (userId), как шлёт Collector (LongSerializer).
-		// Tester Практикума использует LongDeserializer для ключа stats.user-actions.v1.
 		KStream<Long, UserActionAvro> source = builder.stream(
 				USER_ACTIONS_TOPIC, Consumed.with(Serdes.Long(), inputSerde));
 
@@ -134,18 +87,9 @@ public class AggregatorStreamsConfig {
 	/**
 	 * Процессор инкрементального обновления сходства мероприятий.
 	 *
-	 * <p>Использует Processor API v3 ({@code org.apache.kafka.streams.processor.api.Processor}):
-	 * метод {@code process} принимает {@link org.apache.kafka.streams.processor.api.Record},
-	 * а вывод идёт через {@code context.forward(record)} — это позволяет получить выходной
-	 * поток через {@code KStream.process(...)}, возвращающий {@code KStream<KOut,VOut>}.
-	 *
-	 * <p>При каждом новом действии пользователя (userId, eventId, action, ts):
-	 * <ol>
-	 *   <li>Берёт вес действия (VIEW=0.4 / REGISTER=0.8 / LIKE=1.0).</li>
-	 *   <li>Если он не превышает текущий максимальный вес пользователя по этому мероприятию — игнор.</li>
-	 *   <li>Иначе обновляет S_a (сумма весов по мероприятию) и S_min(A,B) для всех B,
-	 *       с которыми пользователь уже взаимодействовал, и пересылает обновлённое сходство дальше.</li>
-	 * </ol>
+	 * <p>При приходе действия (userId, eventId, action) повышает максимальный вес
+	 * пользователя по мероприятию и пересчитывает сходство со всеми остальными
+	 * мероприятиями, с которыми пользователь уже взаимодействовал.
 	 */
 	public static final class SimilarityProcessor
 			implements org.apache.kafka.streams.processor.api.Processor<Long, UserActionAvro, String, EventSimilarityAvro> {
@@ -193,7 +137,6 @@ public class AggregatorStreamsConfig {
 			Double oldBoxed = userActionStore.get(uaKey);
 			double oldWeight = oldBoxed == null ? 0.0 : oldBoxed;
 
-			// По ТЗ: обновляем только если новый вес превышает старый.
 			if (newWeight <= oldWeight) {
 				return;
 			}
@@ -201,12 +144,10 @@ public class AggregatorStreamsConfig {
 			double delta = newWeight - oldWeight;
 			userActionStore.put(uaKey, newWeight);
 
-			// Обновляем S_a (сумму весов по мероприятию A).
 			Double sABoxed = eventWeightsStore.get(eventId);
 			double sA = (sABoxed == null ? 0.0 : sABoxed) + delta;
 			eventWeightsStore.put(eventId, sA);
 
-			// Множество мероприятий, с которыми уже взаимодействовал этот пользователь.
 			Set<Long> userEvents = eventsByUserStore.get(userId);
 			if (userEvents == null) {
 				userEvents = new HashSet<>();
@@ -214,7 +155,6 @@ public class AggregatorStreamsConfig {
 
 			Instant timestamp = action.getTimestamp() == null ? Instant.now() : action.getTimestamp();
 
-			// Пересчёт сходства со всеми остальными мероприятиями пользователя.
 			for (Long other : userEvents) {
 				if (other == eventId) {
 					continue;
@@ -234,16 +174,12 @@ public class AggregatorStreamsConfig {
 				similarityStore.put(pairKey, sMin);
 
 				double score = SimilarityCalculator.similarity(sMin, sA, sB);
-				// Округление до 6 знаков после запятой — как в референс-решениях Danny1kk:
-				// tester Практикума сравнивает score с фиксированной точностью.
 				score = Math.round(score * 1_000_000.0) / 1_000_000.0;
 				EventSimilarityAvro out = buildSimilarity(eventId, other, score, timestamp);
-				// forward нового API принимает Record; timestamp берём из исходной записи.
 				context.forward(new org.apache.kafka.streams.processor.api.Record<>(
 						pairKey, out, record.timestamp()));
 			}
 
-			// Регистрируем мероприятие за пользователем (после цикла — чтобы не учитывать само себя).
 			if (!userEvents.contains(eventId)) {
 				userEvents = new HashSet<>(userEvents);
 				userEvents.add(eventId);
@@ -253,7 +189,6 @@ public class AggregatorStreamsConfig {
 
 		@Override
 		public void close() {
-			// State stores управляются Kafka Streams.
 		}
 
 		private static String pairKey(long a, long b) {
@@ -274,7 +209,7 @@ public class AggregatorStreamsConfig {
 	}
 
 	/**
-	 * Сериализатор {@code Set<Long>} как comma-separated значений (для state store).
+	 * Сериализатор {@code Set<Long>} как comma-separated значений.
 	 */
 	static final class JsonSetSerializer implements org.apache.kafka.common.serialization.Serializer<Set<Long>> {
 		@Override

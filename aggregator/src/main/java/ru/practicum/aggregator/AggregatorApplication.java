@@ -5,16 +5,11 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.cloud.client.discovery.EnableDiscoveryClient;
 
 /**
- * Сервис Aggregator (Этап 3-2).
+ * Сервис Aggregator.
  *
- * Потоково читает {@link ru.practicum.ewm.stats.avro.UserActionAvro} из Kafka-топика
- * {@code stats.user-actions.v1}, инкрементально пересчитывает косинусное сходство мероприятий
- * (см. {@link ru.practicum.aggregator.similarity.SimilarityCalculator}) и отправляет
- * {@link ru.practicum.ewm.stats.avro.EventSimilarityAvro} в топик
- * {@code stats.events-similarity.v1}.
- *
- * Реализован на Kafka Streams с тремя state stores (cм. {@code AggregatorStreamsConfig}).
- * Регистрируется в Eureka как {@code aggregator}; конфигурацию тянет из Config Server.
+ * Читает действия пользователей из Kafka, инкрементально пересчитывает косинусное
+ * сходство мероприятий и отправляет обновления в Kafka-топик сходств.
+ * Реализован на Kafka Streams.
  */
 @SpringBootApplication
 @EnableDiscoveryClient

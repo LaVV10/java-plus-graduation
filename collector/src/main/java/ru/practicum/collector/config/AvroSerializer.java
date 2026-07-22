@@ -11,15 +11,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 
 /**
- * Kafka-сериализатор для Avro-записей — чистый Avro binary, без Confluent wire format.
- *
- * <p>Тестер Практикума использует {@code ru.practicum.kafka.deserializer.BaseAvroDeserializer},
- * который читает payload с первого байта через {@code DecoderFactory.binaryDecoder(data, null)} —
- * без magic byte и schema-id. Поэтому пишем «голый» Avro-payload: {@link SpecificRecord} →
- * {@link BinaryEncoder}.
- *
- * <p>Это совпадает с {@code ru.practicum.kafka.serializer.GeneralAvroSerializer} из
- * {@code avro-schemas.jar} тестера.
+ * Kafka-сериализатор для Avro-записей в чистый binary-формат.
  */
 public class AvroSerializer<T extends SpecificRecord> implements Serializer<T> {
 

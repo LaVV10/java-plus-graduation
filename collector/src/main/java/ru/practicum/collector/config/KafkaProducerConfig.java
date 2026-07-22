@@ -15,17 +15,7 @@ import java.util.Map;
 
 /**
  * Настройка Kafka producer-а для записи {@link UserActionAvro} в топик
- * {@code stats.user-actions.v1}.
- *
- * <p><b>Ключ — userId типа Long</b> (не String!). Tester Практикума использует
- * {@code LongDeserializer} для ключа (см. его application.yaml →
- * tester.kafka.properties.actions."key.deserializer"). Строковый ключ ломает
- * десериализацию с ошибкой {@code Size of data received by LongDeserializer is not 8}.
- * Long-ключ также обеспечивает ко-партиционирование действий одного пользователя.
- *
- * <p>Значение сериализуется через {@link AvroSerializer} в чистый Avro binary format
- * (без Confluent magic byte и schema-id) — этого формата ждёт tester Практикума
- * ({@code BaseAvroDeserializer.binaryDecoder(data, null)}). Schema Registry НЕ используется.
+ * {@code stats.user-actions.v1}. Ключ — userId (Long).
  */
 @Configuration
 public class KafkaProducerConfig {

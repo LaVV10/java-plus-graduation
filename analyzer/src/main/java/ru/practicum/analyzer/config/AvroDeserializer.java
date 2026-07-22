@@ -8,13 +8,7 @@ import org.apache.kafka.common.errors.SerializationException;
 import org.apache.kafka.common.serialization.Deserializer;
 
 /**
- * Kafka-десериализатор Avro — чистый Avro binary, без Confluent wire format.
- *
- * <p>Тестер Практикума использует {@code ru.practicum.kafka.deserializer.BaseAvroDeserializer},
- * который читает payload с первого байта. Мы пишем и читаем тем же форматом.
- *
- * <p>Совместим с {@link ru.practicum.collector.config.AvroSerializer} на стороне Collector'а
- * и {@code GeneralAvroSerializer} тестера.
+ * Kafka-десериализатор Avro-записей из чистого binary-формата.
  */
 public class AvroDeserializer<T extends SpecificRecord> implements Deserializer<T> {
 

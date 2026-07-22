@@ -14,13 +14,10 @@ import ru.practicum.ewm.stats.avro.UserActionAvro;
 import java.time.Instant;
 
 /**
- * gRPC-реализация сервиса {@link UserActionControllerGrpc}.
+ * gRPC-реализация сервиса сбора действий пользователей.
  *
- * Принимает {@link UserActionProto} от core-сервисов (event-service, request-service),
- * маппит в {@link UserActionAvro} и асинхронно отправляет в Kafka-топик
- * {@code stats.user-actions.v1} с ключом {@code userId}.
- *
- * gRPC-метод возвращает {@code Empty} сразу — клиент не ждёт обработки Aggregator/Analyzer.
+ * Принимает {@link UserActionProto}, маппит в {@link UserActionAvro} и отправляет
+ * в Kafka-топик {@code stats.user-actions.v1} с ключом userId.
  */
 @Slf4j
 @GrpcService
@@ -43,15 +40,10 @@ public class UserActionControllerGrpcImpl extends UserActionControllerGrpc.UserA
 
 		try {
 			UserActionAvro avro = mapToAvro(request);
-			// Ключ — userId типа Long. Tester Практикума использует LongDeserializer
-			// для ключа (см. tester.kafka.properties.actions."key.deserializer").
-			// Строковый ключ ломает десериализацию: "Size of data received by
-			// LongDeserializer is not 8".
 			kafkaTemplate.send(userActionsTopic, request.getUserId(), avro).get();
 		} catch (Exception e) {
 			log.error("Не удалось записать действие пользователя в Kafka: userId={}, eventId={}, action={}",
 					request.getUserId(), request.getEventId(), request.getActionType(), e);
-			// Возвращаем в gRPC статус INTERNAL с описанием — иначе tester видит лишь UNKNOWN.
 			responseObserver.onError(io.grpc.Status.INTERNAL
 					.withDescription("Не удалось записать действие в Kafka: " + e.getMessage())
 					.withCause(e)
@@ -64,8 +56,6 @@ public class UserActionControllerGrpcImpl extends UserActionControllerGrpc.UserA
 	}
 
 	private UserActionAvro mapToAvro(UserActionProto proto) {
-		// Avro timestamp-millis маппится на java.time.Instant (генератор подключил
-		// TimestampMillisConversion), поэтому сеттим Instant напрямую.
 		Instant timestamp = proto.hasTimestamp()
 				? Instant.ofEpochSecond(proto.getTimestamp().getSeconds(), proto.getTimestamp().getNanos())
 				: Instant.now();
