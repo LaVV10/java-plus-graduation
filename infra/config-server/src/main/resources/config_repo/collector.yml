@@ -7,10 +7,10 @@ grpc:
 spring:
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
-    # value-serializer задаётся в KafkaProducerConfig.java через AvroSerializer.class
-    # (чистый Avro binary без Confluent magic byte/schema-id — этого формата ждёт tester Практикума).
+    # key-serializer = LongSerializer и value-serializer = AvroSerializer задаются
+    # в KafkaProducerConfig.java. Long-ключ нужен потому что tester Практикума
+    # использует LongDeserializer для ключа (чистый Avro binary без Confluent magic byte).
     producer:
-      key-serializer: org.apache.kafka.common.serialization.StringSerializer
       acks: "1"
       retries: 3
       properties:

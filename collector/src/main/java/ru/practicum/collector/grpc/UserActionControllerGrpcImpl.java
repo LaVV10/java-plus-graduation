@@ -29,7 +29,7 @@ public class UserActionControllerGrpcImpl extends UserActionControllerGrpc.UserA
 
 	private static final String USER_ACTIONS_TOPIC = "stats.user-actions.v1";
 
-	private final KafkaTemplate<String, UserActionAvro> kafkaTemplate;
+	private final KafkaTemplate<Long, UserActionAvro> kafkaTemplate;
 
 	@Value("${spring.kafka.topic.user-actions:" + USER_ACTIONS_TOPIC + "}")
 	private String userActionsTopic;
@@ -43,11 +43,11 @@ public class UserActionControllerGrpcImpl extends UserActionControllerGrpc.UserA
 
 		try {
 			UserActionAvro avro = mapToAvro(request);
-			String key = String.valueOf(request.getUserId());
-
-			// send() синхронно сериализует (KafkaAvroSerializer) и кладёт в буфер продюсера.
-			// Если Schema Registry недоступен или неверный url — упадёт здесь с исключением.
-			kafkaTemplate.send(userActionsTopic, key, avro).get();
+			// Ключ — userId типа Long. Tester Практикума использует LongDeserializer
+			// для ключа (см. tester.kafka.properties.actions."key.deserializer").
+			// Строковый ключ ломает десериализацию: "Size of data received by
+			// LongDeserializer is not 8".
+			kafkaTemplate.send(userActionsTopic, request.getUserId(), avro).get();
 		} catch (Exception e) {
 			log.error("Не удалось записать действие пользователя в Kafka: userId={}, eventId={}, action={}",
 					request.getUserId(), request.getEventId(), request.getActionType(), e);

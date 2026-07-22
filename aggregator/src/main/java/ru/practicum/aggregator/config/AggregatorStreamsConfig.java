@@ -93,7 +93,7 @@ public class AggregatorStreamsConfig {
 	 * (через {@code @EnableKafkaStreams} + {@code defaultKafkaStreamsBuilder}) наполняет
 	 * и потом сам вызывает {@code builder.build()}.
 	 *
-	 * <p>Avro-сериализация — Confluent wire format без Schema Registry через
+	 * <p>Avro-сериализация — чистый Avro binary без Schema Registry через
 	 * {@link AvroSerdes#forClass(Class)}: этого формата ждёт tester Практикума.
 	 *
 	 * @param builder бин {@link StreamsBuilder}, предоставляемый Spring Kafka auto-config
@@ -115,8 +115,10 @@ public class AggregatorStreamsConfig {
 				Stores.persistentKeyValueStore(SIMILARITY_STORE), Serdes.String(), Serdes.Double()));
 
 		// ─── Граф: stream → process → to ────────────────────────────────
-		KStream<String, UserActionAvro> source = builder.stream(
-				USER_ACTIONS_TOPIC, Consumed.with(Serdes.String(), inputSerde));
+		// Ключ входного топика — Long (userId), как шлёт Collector (LongSerializer).
+		// Tester Практикума использует LongDeserializer для ключа stats.user-actions.v1.
+		KStream<Long, UserActionAvro> source = builder.stream(
+				USER_ACTIONS_TOPIC, Consumed.with(Serdes.Long(), inputSerde));
 
 		KStream<String, EventSimilarityAvro> similarities = source.process(
 				() -> new SimilarityProcessor(USER_ACTION_STORE, EVENT_WEIGHTS_STORE,
@@ -146,7 +148,7 @@ public class AggregatorStreamsConfig {
 	 * </ol>
 	 */
 	public static final class SimilarityProcessor
-			implements org.apache.kafka.streams.processor.api.Processor<String, UserActionAvro, String, EventSimilarityAvro> {
+			implements org.apache.kafka.streams.processor.api.Processor<Long, UserActionAvro, String, EventSimilarityAvro> {
 		private final String userActionStoreName;
 		private final String eventWeightsStoreName;
 		private final String eventsByUserStoreName;
@@ -177,7 +179,7 @@ public class AggregatorStreamsConfig {
 		}
 
 		@Override
-		public void process(org.apache.kafka.streams.processor.api.Record<String, UserActionAvro> record) {
+		public void process(org.apache.kafka.streams.processor.api.Record<Long, UserActionAvro> record) {
 			UserActionAvro action = record.value();
 			if (action == null) {
 				return;

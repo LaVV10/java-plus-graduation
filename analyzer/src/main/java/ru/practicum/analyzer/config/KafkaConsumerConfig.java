@@ -3,6 +3,7 @@ package ru.practicum.analyzer.config;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.common.serialization.LongDeserializer;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationRunner;
@@ -52,14 +53,16 @@ public class KafkaConsumerConfig {
 	}
 
 	@Bean(name = "userActionConsumerFactory")
-	public ConsumerFactory<String, UserActionAvro> userActionConsumerFactory() {
+	public ConsumerFactory<Long, UserActionAvro> userActionConsumerFactory() {
+		// Ключ топика stats.user-actions.v1 — Long (userId), см. Collector (LongSerializer).
+		// Tester Практикума использует LongDeserializer для этого ключа.
 		return new DefaultKafkaConsumerFactory<>(
-				baseProps(), new StringDeserializer(), new AvroDeserializer<>(UserActionAvro.class));
+				baseProps(), new LongDeserializer(), new AvroDeserializer<>(UserActionAvro.class));
 	}
 
 	@Bean(name = "userActionContainerFactory")
-	public ConcurrentKafkaListenerContainerFactory<String, UserActionAvro> userActionContainerFactory(
-			ConsumerFactory<String, UserActionAvro> userActionConsumerFactory) {
+	public ConcurrentKafkaListenerContainerFactory<Long, UserActionAvro> userActionContainerFactory(
+			ConsumerFactory<Long, UserActionAvro> userActionConsumerFactory) {
 		return buildFactory(userActionConsumerFactory);
 	}
 
@@ -75,9 +78,9 @@ public class KafkaConsumerConfig {
 		return buildFactory(eventSimilarityConsumerFactory);
 	}
 
-	private <V> ConcurrentKafkaListenerContainerFactory<String, V> buildFactory(
-			ConsumerFactory<String, V> consumerFactory) {
-		ConcurrentKafkaListenerContainerFactory<String, V> factory =
+	private <K, V> ConcurrentKafkaListenerContainerFactory<K, V> buildFactory(
+			ConsumerFactory<K, V> consumerFactory) {
+		ConcurrentKafkaListenerContainerFactory<K, V> factory =
 				new ConcurrentKafkaListenerContainerFactory<>();
 		factory.setConsumerFactory(consumerFactory);
 		factory.getContainerProperties().setAckMode(ContainerProperties.AckMode.RECORD);
@@ -91,7 +94,7 @@ public class KafkaConsumerConfig {
 	 */
 	@Bean
 	public ApplicationRunner seekToEndOnStartup(
-			ConsumerFactory<String, UserActionAvro> userActionConsumerFactory,
+			ConsumerFactory<Long, UserActionAvro> userActionConsumerFactory,
 			ConsumerFactory<String, EventSimilarityAvro> eventSimilarityConsumerFactory) {
 		return args -> {
 			seekToEnd(userActionConsumerFactory, "stats.user-actions.v1", "analyzer-reset-ua");
@@ -99,7 +102,7 @@ public class KafkaConsumerConfig {
 		};
 	}
 
-	private <V> void seekToEnd(ConsumerFactory<String, V> factory, String topic, String resetClientId) {
+	private <K, V> void seekToEnd(ConsumerFactory<K, V> factory, String topic, String resetClientId) {
 		try (var consumer = factory.createConsumer(resetClientId, "reset")) {
 			var partitions = consumer.partitionsFor(topic).stream()
 					.map(p -> new TopicPartition(p.topic(), p.partition()))
