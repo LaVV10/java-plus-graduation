@@ -24,27 +24,6 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.UUID;
 
-/**
- * Топология Kafka Streams сервиса Aggregator.
- *
- * <p>Поток обработки:
- * <pre>
- *   stats.user-actions.v1  ──►  source("user-actions-source")
- *                                    │
- *                                    ▼
- *                              processor("similarity-processor")
- *                                    │ читает/обновляет 4 state stores:
- *                                    │   user-action-store   "userId:eventId" → макс. вес
- *                                    │   event-weights-store eventId          → S_a (сумма весов)
- *                                    │   events-by-user-store userId          → Set&lt;eventId&gt;
- *                                    │   similarity-store     "a:b" (a&lt;b)      → S_min(a,b)
- *                                    ▼
- *                              sink("similarity-sink")  ──►  stats.events-similarity.v1
- * </pre>
- *
- * <p>State stores персистентные с changelog-топиками (префикс {@code aggregator-}),
- * создаваемыми Kafka Streams автоматически — состояние восстанавливается после рестарта.
- */
 @Configuration
 @EnableKafkaStreams
 public class AggregatorStreamsConfig {
@@ -62,16 +41,7 @@ public class AggregatorStreamsConfig {
 	static final String SOURCE_NODE = "user-actions-source";
 	static final String PROCESSOR_NODE = "similarity-processor";
 	static final String SINK_NODE = "similarity-sink";
-
-	/**
-	 * Донастраивает {@link org.springframework.kafka.config.StreamsBuilderFactoryBean}:
-	 * application.id (groupId Streams-приложения) с UUID-суффиксом и exactly-once.
-	 *
-	 * <p>UUID-суффикс в application.id — ключевой приём (как в референс-решениях):
-	 * каждый запуск получает уникальный id → Streams создаёт новые changelog-топики
-	 * и state directory → не наследует состояние/offset'ы прошлых прогонов CI,
-	 * где в Kafka могли остаться битые сообщения.
-	 */
+	
 	@Bean
 	public StreamsBuilderFactoryBeanConfigurer streamsBuilderFactoryBeanConfigurer() {
 		return factory -> {
@@ -85,19 +55,6 @@ public class AggregatorStreamsConfig {
 		};
 	}
 
-	/**
-	 * Описывает topology: source-поток {@code stats.user-actions.v1} → процессор
-	 * (4 state stores) → {@code stats.events-similarity.v1}.
-	 *
-	 * <p>Реализуется через DSL {@link StreamsBuilder}, который Spring Kafka Streams
-	 * (через {@code @EnableKafkaStreams} + {@code defaultKafkaStreamsBuilder}) наполняет
-	 * и потом сам вызывает {@code builder.build()}.
-	 *
-	 * <p>Avro-сериализация — чистый Avro binary без Schema Registry через
-	 * {@link AvroSerdes#forClass(Class)}: этого формата ждёт tester Практикума.
-	 *
-	 * @param builder бин {@link StreamsBuilder}, предоставляемый Spring Kafka auto-config
-	 */
 	@Bean
 	public KStream<String, EventSimilarityAvro> aggregatorTopology(StreamsBuilder builder) {
 		Serde<Set<Long>> setSerde = Serdes.serdeFrom(new JsonSetSerializer(), new JsonSetDeserializer());
@@ -114,9 +71,6 @@ public class AggregatorStreamsConfig {
 		builder.addStateStore(Stores.keyValueStoreBuilder(
 				Stores.persistentKeyValueStore(SIMILARITY_STORE), Serdes.String(), Serdes.Double()));
 
-		// ─── Граф: stream → process → to ────────────────────────────────
-		// Ключ входного топика — Long (userId), как шлёт Collector (LongSerializer).
-		// Tester Практикума использует LongDeserializer для ключа stats.user-actions.v1.
 		KStream<Long, UserActionAvro> source = builder.stream(
 				USER_ACTIONS_TOPIC, Consumed.with(Serdes.Long(), inputSerde));
 
@@ -131,22 +85,6 @@ public class AggregatorStreamsConfig {
 		return similarities;
 	}
 
-	/**
-	 * Процессор инкрементального обновления сходства мероприятий.
-	 *
-	 * <p>Использует Processor API v3 ({@code org.apache.kafka.streams.processor.api.Processor}):
-	 * метод {@code process} принимает {@link org.apache.kafka.streams.processor.api.Record},
-	 * а вывод идёт через {@code context.forward(record)} — это позволяет получить выходной
-	 * поток через {@code KStream.process(...)}, возвращающий {@code KStream<KOut,VOut>}.
-	 *
-	 * <p>При каждом новом действии пользователя (userId, eventId, action, ts):
-	 * <ol>
-	 *   <li>Берёт вес действия (VIEW=0.4 / REGISTER=0.8 / LIKE=1.0).</li>
-	 *   <li>Если он не превышает текущий максимальный вес пользователя по этому мероприятию — игнор.</li>
-	 *   <li>Иначе обновляет S_a (сумма весов по мероприятию) и S_min(A,B) для всех B,
-	 *       с которыми пользователь уже взаимодействовал, и пересылает обновлённое сходство дальше.</li>
-	 * </ol>
-	 */
 	public static final class SimilarityProcessor
 			implements org.apache.kafka.streams.processor.api.Processor<Long, UserActionAvro, String, EventSimilarityAvro> {
 		private final String userActionStoreName;
