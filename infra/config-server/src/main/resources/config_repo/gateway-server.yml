@@ -33,6 +33,8 @@ spring:
             predicates:
               - Path=/users/{userId}/requests/**
           # ─── event-service (events + locations) ──────────────────────────
+          # Важно: специфичные пути events (recommendations, like) идут ДО общих /events**,
+          # иначе они будут поглощены маршрутом event-public-sub.
           - id: event-private-list
             uri: lb://event-service
             predicates:
@@ -49,6 +51,14 @@ spring:
             uri: lb://event-service
             predicates:
               - Path=/admin/events/**
+          - id: event-recommendations
+            uri: lb://event-service
+            predicates:
+              - Path=/events/recommendations
+          - id: event-like
+            uri: lb://event-service
+            predicates:
+              - Path=/events/{eventId}/like
           - id: event-public
             uri: lb://event-service
             predicates:

@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+		 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+		 xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+
+	<parent>
+		<groupId>ru.practicum</groupId>
+		<artifactId>explore-with-me</artifactId>
+		<version>0.0.1-SNAPSHOT</version>
+		<relativePath>../pom.xml</relativePath>
+	</parent>
+
+	<artifactId>stats-contract</artifactId>
+	<packaging>jar</packaging>
+	<name>Stats Contract (gRPC + Avro)</name>
+
+	<description>
+		Общий контрактный модуль рекомендательной подсистемы.
+		Содержит .proto-схемы (генерируются gRPC-стабы) и Avro-схемы (генерируются классы ru.practicum.ewm.stats.avro).
+		Потребляется сервисами collector/aggregator/analyzer и модулем stats-client (gRPC-клиенты).
+	</description>
+
+	<properties>
+		<!-- os-maven-plugin создаёт ${os.detected.classifier} для выбора бинарника protoc -->
+		<extensions.outputDirectory>${project.build.directory}/generated-sources</extensions.outputDirectory>
+	</properties>
+
+	<dependencies>
+		<!-- gRPC-стабы используют аннотации javax/градл-генерацию -->
+		<dependency>
+			<groupId>io.grpc</groupId>
+			<artifactId>grpc-stub</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>io.grpc</groupId>
+			<artifactId>grpc-protobuf</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>io.grpc</groupId>
+			<artifactId>grpc-netty-shaded</artifactId>
+			<scope>provided</scope>
+		</dependency>
+		<dependency>
+			<groupId>com.google.protobuf</groupId>
+			<artifactId>protobuf-java</artifactId>
+		</dependency>
+		<!-- Сгенерированные gRPC-стабы используют @javax.annotation.Generated -->
+		<dependency>
+			<groupId>javax.annotation</groupId>
+			<artifactId>javax.annotation-api</artifactId>
+			<version>1.3.2</version>
+		</dependency>
+		<!-- Avro -->
+		<dependency>
+			<groupId>org.apache.avro</groupId>
+			<artifactId>avro</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.projectlombok</groupId>
+			<artifactId>lombok</artifactId>
+			<optional>true</optional>
+		</dependency>
+	</dependencies>
+
+	<build>
+		<extensions>
+			<!-- Определяет ${os.detected.classifier} для выбора платформо-зависимого protoc -->
+			<extension>
+				<groupId>kr.motd.maven</groupId>
+				<artifactId>os-maven-plugin</artifactId>
+				<version>${os-maven-plugin.version}</version>
+			</extension>
+		</extensions>
+		<plugins>
+			<!-- Генерация Java-классов из .proto (сообщения + gRPC-стабы) -->
+			<plugin>
+				<groupId>org.xolstice.maven.plugins</groupId>
+				<artifactId>protobuf-maven-plugin</artifactId>
+				<version>${protobuf-maven-plugin.version}</version>
+				<configuration>
+					<protocArtifact>
+						com.google.protobuf:protoc:${protoc.version}:exe:${os.detected.classifier}
+					</protocArtifact>
+					<pluginId>grpc-java</pluginId>
+					<pluginArtifact>
+						io.grpc:protoc-gen-grpc-java:${grpc.version}:exe:${os.detected.classifier}
+					</pluginArtifact>
+					<protoSourceRoot>${project.basedir}/src/main/proto</protoSourceRoot>
+				</configuration>
+				<executions>
+					<execution>
+						<goals>
+							<goal>compile</goal>
+							<goal>compile-custom</goal>
+						</goals>
+					</execution>
+				</executions>
+			</plugin>
+
+			<!-- Генерация Java-классов из Avro-схем (.avsc) -->
+			<plugin>
+				<groupId>org.apache.avro</groupId>
+				<artifactId>avro-maven-plugin</artifactId>
+				<version>${avro.version}</version>
+				<configuration>
+					<sourceDirectory>${project.basedir}/src/main/avro</sourceDirectory>
+					<stringType>String</stringType>
+				</configuration>
+				<executions>
+					<execution>
+						<phase>generate-sources</phase>
+						<goals>
+							<goal>schema</goal>
+						</goals>
+					</execution>
+				</executions>
+			</plugin>
+		</plugins>
+	</build>
+
+</project>

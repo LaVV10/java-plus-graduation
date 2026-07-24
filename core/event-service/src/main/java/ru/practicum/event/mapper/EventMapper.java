@@ -20,7 +20,7 @@ import java.util.stream.Collectors;
  * в других сервисах. Поэтому CategoryDto/UserShortDto передаются параметрами при сборке DTO —
  * их сервисный слой получает через Feign и прокидывает в маппер.
  *
- * confirmedRequests/views всегда инициализируются нулями; реальные значения проставляет сервис.
+ * confirmedRequests/rating всегда инициализируются нулями; реальные значения проставляет сервис.
  */
 @Component
 public class EventMapper {
@@ -57,7 +57,7 @@ public class EventMapper {
 		dto.setInitiator(initiator);
 		dto.setLocation(locationMapper.toLocationDto(event.getLocation()));
 
-		dto.setViews(0L);
+		dto.setRating(0.0);
 		dto.setConfirmedRequests(0L);
 
 		return dto;
@@ -103,7 +103,7 @@ public class EventMapper {
 		dto.setCategory(category);
 		dto.setInitiator(initiator);
 
-		dto.setViews(0L);
+		dto.setRating(0.0);
 		dto.setConfirmedRequests(0L);
 
 		return dto;

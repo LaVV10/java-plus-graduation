@@ -2,6 +2,21 @@
 server:
   port: 0
 
+# gRPC-клиенты к Collector (отправка действий) и Analyzer (рекомендации/рейтинг).
+# Адреса резолвятся через Eureka (discovery:///имя-сервиса).
+grpc:
+  client:
+    collector:
+      address: 'discovery:///collector'
+      negotiationType: plaintext
+      enableKeepAlive: true
+      keepAliveWithoutCalls: true
+    analyzer:
+      address: 'discovery:///analyzer'
+      negotiationType: plaintext
+      enableKeepAlive: true
+      keepAliveWithoutCalls: true
+
 spring:
   jpa:
     hibernate:

@@ -1,0 +1,70 @@
+syntax = "proto3";
+
+package stats.service.dashboard;
+
+option java_package = "ru.practicum.ewm.stats.recommendations.v1";
+option java_multiple_files = true;
+
+// Запрос рекомендаций мероприятий для конкретного пользователя.
+message UserPredictionsRequestProto {
+  // Идентификатор пользователя, для которого вычисляются рекомендации.
+  int64 user_id = 1;
+  // Ограничение количества мероприятий в результате.
+  int32 max_results = 2;
+}
+
+// Запрос мероприятий, похожих на указанное.
+message SimilarEventsRequestProto {
+  // Идентификатор мероприятия, для которого нужно найти похожие.
+  int64 event_id = 1;
+  // Идентификатор пользователя: мероприятия, с которыми он уже взаимодействовал, исключаются.
+  int64 user_id = 2;
+  // Ограничение количества мероприятий в результате.
+  int32 max_results = 3;
+}
+
+// Запрос суммарного веса взаимодействий по набору мероприятий.
+message InteractionsCountRequestProto {
+  // Идентификаторы мероприятий.
+  repeated int64 event_id = 1;
+}
+
+// Элемент выдачи рекомендаций. Семантика поля score зависит от вызванного метода
+// (предсказанная оценка / коэффициент сходства / сумма весов действий).
+message RecommendedEventProto {
+  // Идентификатор мероприятия.
+  int64 event_id = 1;
+  // Оценка/сходство/сумма весов (см. описание метода). double — как в референс-решении.
+  double score = 2;
+}
+
+// gRPC-сервис рекомендаций (Analyzer).
+service RecommendationsController {
+  // Поток рекомендованных мероприятий на основе предсказания оценки.
+  rpc GetRecommendationsForUser(UserPredictionsRequestProto)
+      returns (stream RecommendedEventProto);
+
+  // Поток мероприятий, максимально похожих на указанное
+  // и с которыми пользователь ещё не взаимодействовал.
+  rpc GetSimilarEvents(SimilarEventsRequestProto)
+      returns (stream RecommendedEventProto);
+
+  // Поток мероприятий с суммой максимальных весов действий пользователей с ними.
+  rpc GetInteractionsCount(InteractionsCountRequestProto)
+      returns (stream RecommendedEventProto);
+
+  // Проверяет, взаимодействовал ли пользователь с указанным мероприятием.
+  // Используется event-service для валидации лайка: лайкать можно только посещённое.
+  rpc HasInteraction(HasInteractionRequestProto) returns (HasInteractionResponseProto);
+}
+
+// Запрос проверки факта взаимодействия пользователя с мероприятием.
+message HasInteractionRequestProto {
+  int64 user_id = 1;
+  int64 event_id = 2;
+}
+
+// Ответ: true, если в истории взаимодействий есть запись (userId, eventId).
+message HasInteractionResponseProto {
+  bool has_interaction = 1;
+}

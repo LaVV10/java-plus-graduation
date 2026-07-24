@@ -1,0 +1,19 @@
+# Конфигурация collector, раздаваемая через Config Server.
+# gRPC-сервер на случайном порту (регистрируется в Eureka, клиенты находят через discovery:///collector).
+grpc:
+  server:
+    port: 0
+
+spring:
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    # key-serializer = LongSerializer и value-serializer = AvroSerializer задаются
+    # в KafkaProducerConfig.java. Long-ключ нужен потому что tester Практикума
+    # использует LongDeserializer для ключа (чистый Avro binary без Confluent magic byte).
+    producer:
+      acks: "1"
+      retries: 3
+      properties:
+        linger.ms: 0
+    topic:
+      user-actions: stats.user-actions.v1

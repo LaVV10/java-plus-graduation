@@ -35,16 +35,17 @@ import ru.practicum.event.repository.EventRepository;
 import ru.practicum.event.service.EventService;
 import ru.practicum.event.utils.EventPredicateUtil;
 import ru.practicum.event.utils.EventValidator;
-import ru.practicum.stats.client.StatsClient;
-import ru.practicum.stats.dto.EndpointHitDto;
-import ru.practicum.stats.dto.ViewStatsDto;
+import ru.practicum.ewm.stats.action.v1.ActionTypeProto;
+import ru.practicum.ewm.stats.recommendations.v1.RecommendedEventProto;
+import ru.practicum.stats.client.AnalyzerClient;
+import ru.practicum.stats.client.CollectorClient;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
-import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -61,7 +62,8 @@ public class EventServiceImpl implements EventService {
 	private final CategoryClient categoryClient;
 	private final UserClient userClient;
 	private final RequestStatsClient requestStatsClient;
-	private final StatsClient statsClient;
+	private final AnalyzerClient analyzerClient;
+	private final CollectorClient collectorClient;
 	private final EntityManager entityManager;
 
 	private final DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern(Constants.DATE_TIME_FORMAT);
@@ -208,7 +210,7 @@ public class EventServiceImpl implements EventService {
 		if (events.isEmpty()) return List.of();
 
 		List<EventFullDto> dtos = enrichFullList(events);
-		setView(dtos);
+		setRating(dtos);
 
 		return dtos;
 	}
@@ -217,7 +219,7 @@ public class EventServiceImpl implements EventService {
 	public List<EventFullDto> getEventsWithParamsByUser(String text, List<Long> users, List<Long> categories,
 														Boolean paid, String rangeStart, String rangeEnd,
 														Boolean onlyAvailable, SortValue sort, Integer from,
-														Integer size, String ip, String uri, List<String> states) {
+														Integer size, List<String> states) {
 
 		LocalDateTime start = null;
 		LocalDateTime end = null;
@@ -244,14 +246,10 @@ public class EventServiceImpl implements EventService {
 		predicate = EventPredicateUtil.addDateFilter(predicate, cb, root, end, "eventDate", false);
 		predicate = EventPredicateUtil.addStateFilter(predicate, cb, root, states);
 
+		// Сортировку по рейтингу (RATING) выполняем в памяти после обогащения DTO —
+		// rating не persist-колонка events, а вычисляется через Analyzer.
 		cq.select(root).where(predicate);
-
-		if (sort != null) {
-			if (sort == SortValue.EVENT_DATE) cq.orderBy(cb.asc(root.get("eventDate")));
-			else cq.orderBy(cb.desc(root.get("views")));
-		} else {
-			cq.orderBy(cb.asc(root.get("eventDate")));
-		}
+		cq.orderBy(cb.asc(root.get("eventDate")));
 
 		List<Event> events = entityManager.createQuery(cq)
 				.setFirstResult(from != null ? from : 0)
@@ -261,7 +259,7 @@ public class EventServiceImpl implements EventService {
 		if (events.isEmpty()) return List.of();
 
 		List<EventFullDto> dtos = enrichFullList(events);
-		setView(dtos);
+		setRating(dtos);
 
 		if (Boolean.TRUE.equals(onlyAvailable)) {
 			dtos = dtos.stream()
@@ -269,21 +267,33 @@ public class EventServiceImpl implements EventService {
 					.collect(Collectors.toList());
 		}
 
-		sendStat(events, ip, uri);
+		if (sort == SortValue.RATING) {
+			dtos = dtos.stream()
+					.sorted(Comparator.comparingDouble(EventFullDto::getRating).reversed())
+					.collect(Collectors.toList());
+		}
+
+		// По ТЗ Этапа 3-2: GET /events больше не отправляет информацию о просмотре.
 
 		return dtos;
 	}
 
 	@Override
-	public EventFullDto getEvent(Long id, String ip, String uri) {
+	public EventFullDto getEvent(Long id, Long userId) {
 		Event event = eventRepository.findByIdAndPublishedOnIsNotNull(id)
 				.orElseThrow(() -> new EventNotExistException(
 						String.format("Can't find event with id = %s event doesn't exist", id)));
 
 		EventFullDto eventFullDto = enrichFull(event);
-		sendStat(eventFullDto, ip, uri);
-		Long views = setView(event);
-		eventFullDto.setViews(views != null ? views + 1 : 1L);
+
+		// Рейтинг — сумма максимальных весов действий (через Analyzer gRPC).
+		setRating(List.of(eventFullDto));
+
+		// По ТЗ Этапа 3-2: фиксируем просмотр пользователем мероприятия,
+		// отправляя ACTION_VIEW в Collector (если передан заголовок X-EWM-USER-ID).
+		if (userId != null) {
+			collectorClient.collectUserActionSafe(userId, id, ActionTypeProto.ACTION_VIEW, Instant.now());
+		}
 
 		return eventFullDto;
 	}
@@ -316,6 +326,37 @@ public class EventServiceImpl implements EventService {
 			return List.of();
 		}
 		return enrichShort(events);
+	}
+
+	@Override
+	public List<EventShortDto> getRecommendations(Long userId, Integer maxResults) {
+		int limit = maxResults == null || maxResults <= 0 ? 10 : maxResults;
+		// 1) Запрос персональных рекомендаций у Analyzer (предсказание оценки).
+		List<Long> recommendedIds = analyzerClient.getRecommendationsForUser(userId, limit)
+				.map(RecommendedEventProto::getEventId)
+				.toList();
+		if (recommendedIds.isEmpty()) {
+			return List.of();
+		}
+		// 2) Грузим события пачкой и обогащаем. Порядок сохраняем по recommendations.
+		List<Event> events = eventRepository.findAllByIdIn(recommendedIds);
+		Map<Long, Event> byId = events.stream().collect(Collectors.toMap(Event::getId, Function.identity()));
+		List<Event> ordered = recommendedIds.stream()
+				.map(byId::get)
+				.filter(java.util.Objects::nonNull)
+				.toList();
+		return enrichShort(ordered);
+	}
+
+	@Override
+	public void likeEvent(Long userId, Long eventId) {
+		// По ТЗ: лайкать можно только посещённые мероприятия.
+		boolean visited = analyzerClient.hasInteraction(userId, eventId);
+		if (!visited) {
+			throw new ru.practicum.event.exception.LikeNotAllowedException(
+					"Пользователь может лайкать только посещённые им мероприятия");
+		}
+		collectorClient.collectUserActionSafe(userId, eventId, ActionTypeProto.ACTION_LIKE, Instant.now());
 	}
 
 	private Event getEventById(Long eventId) {
@@ -393,89 +434,23 @@ public class EventServiceImpl implements EventService {
 				.collect(Collectors.toMap(UserShortDto::getId, Function.identity()));
 	}
 
-	// ─── Статистика (просмотры) ─────────────────────────────────────────────
+	// ─── Рейтинг (через Analyzer gRPC) ────────────────────────────────────
 
-	private void sendStat(EventFullDto event, String ip, String uri) {
-		LocalDateTime now = LocalDateTime.now();
-		String nameService = "event-service";
-
-		EndpointHitDto requestDto = new EndpointHitDto();
-		requestDto.setTimestamp(now.format(dateFormatter));
-		requestDto.setUri("/events");
-		requestDto.setApp(nameService);
-		requestDto.setIp(ip);
-		statsClient.addStats(requestDto);
-		sendStatForTheEvent(event.getId(), ip, now, nameService);
-	}
-
-	private void sendStat(List<Event> events, String ip, String uri) {
-		LocalDateTime now = LocalDateTime.now();
-		String nameService = "event-service";
-
-		EndpointHitDto requestDto = new EndpointHitDto();
-		requestDto.setTimestamp(now.format(dateFormatter));
-		requestDto.setUri("/events");
-		requestDto.setApp(nameService);
-		requestDto.setIp(ip);
-		statsClient.addStats(requestDto);
-	}
-
-	public void setView(List<EventFullDto> events) {
+	/**
+	 * Проставляет rating в DTO событий пакетно: запрашивает у Analyzer суммы
+	 * максимальных весов действий пользователей по всем событиям списка.
+	 * Сбои Analyzer не должны валить показ событий — используем safe-вариант клиента.
+	 */
+	private void setRating(List<EventFullDto> events) {
 		if (events == null || events.isEmpty()) {
 			return;
 		}
-
-		LocalDateTime start;
-		try {
-			start = LocalDateTime.parse(events.getFirst().getCreatedOn());
-		} catch (Exception e) {
-			start = LocalDateTime.now().minusYears(1);
-		}
-
-		List<String> uris = new ArrayList<>();
-		Map<String, EventFullDto> eventsUri = new HashMap<>();
-
-		for (EventFullDto event : events) {
-			try {
-				LocalDateTime createdOn = LocalDateTime.parse(event.getCreatedOn());
-				if (createdOn.isBefore(start)) {
-					start = createdOn;
-				}
-			} catch (Exception e) {
-				log.debug("Ошибка парсинга createdOn для события id={}: {}", event.getId(), e.getMessage());
-			}
-
-			String uri = "/events/" + event.getId();
-			uris.add(uri);
-			eventsUri.put(uri, event);
-			event.setViews(0L);
-		}
-
-		String startTime = start.format(dateFormatter);
-		String endTime = LocalDateTime.now().format(dateFormatter);
-		List<ViewStatsDto> stats = getStats(startTime, endTime, uris);
-		stats.forEach((stat) -> {
-			EventFullDto dto = eventsUri.get(stat.getUri());
-			if (dto != null) {
-				dto.setViews(stat.getHits());
-			}
-		});
-	}
-
-	public Long setView(Event event) {
-		if (event == null || event.getCreatedOn() == null) {
-			return 0L;
-		}
-
-		String startTime = event.getCreatedOn().format(dateFormatter);
-		String endTime = LocalDateTime.now().format(dateFormatter);
-		List<String> uris = List.of("/events/" + event.getId());
-		List<ViewStatsDto> stats = getStats(startTime, endTime, uris);
-		if (stats.size() == 1) {
-			return stats.getFirst().getHits();
-		} else {
-			return 0L;
-		}
+		List<Long> ids = events.stream().map(EventFullDto::getId).toList();
+		List<RecommendedEventProto> ratings = analyzerClient.getInteractionsCountSafe(ids);
+		Map<Long, Double> ratingById = ratings.stream()
+				.collect(Collectors.toMap(RecommendedEventProto::getEventId,
+						RecommendedEventProto::getScore, (a, b) -> a));
+		events.forEach(dto -> dto.setRating(ratingById.getOrDefault(dto.getId(), 0.0)));
 	}
 
 	private void checkDateTime(LocalDateTime start, LocalDateTime end) {
@@ -488,18 +463,5 @@ public class EventServiceImpl implements EventService {
 		if (start.isAfter(end)) {
 			throw new WrongTimeException("Некорректный запрос. Дата окончания события задана позже даты старта");
 		}
-	}
-
-	private List<ViewStatsDto> getStats(String startTime, String endTime, List<String> uris) {
-		return statsClient.getStats(startTime, endTime, uris, false);
-	}
-
-	private void sendStatForTheEvent(Long eventId, String ip, LocalDateTime now, String nameService) {
-		EndpointHitDto requestDto = new EndpointHitDto();
-		requestDto.setTimestamp(now.format(dateFormatter));
-		requestDto.setUri("/events/" + eventId);
-		requestDto.setApp(nameService);
-		requestDto.setIp(ip);
-		statsClient.addStats(requestDto);
 	}
 }

@@ -19,9 +19,16 @@
 
 	<modules>
 		<module>ewm-stats</module>
+		<module>stats-contract</module>
 		<module>infra</module>
 		<module>core</module>
+		<module>collector</module>
+		<module>aggregator</module>
+		<module>analyzer</module>
 	</modules>
+	<!-- Новые сервисы (collector/aggregator/analyzer) создаются итеративно;
+	     отсутствие их pom.xml на ранних шагах не должно ломать reactor.
+	     Для последовательной сборки отдельных модулей используйте -pl <module> -am/-amd. -->
 
 	<properties>
 		<java.version>21</java.version>
@@ -32,6 +39,17 @@
 		<spotbugs.version>4.8.5.0</spotbugs.version>
 		<jacoco.version>0.8.12</jacoco.version>
 		<spring-cloud.version>2023.0.3</spring-cloud.version>
+		<!-- gRPC / Protobuf -->
+		<grpc-spring-boot-starter.version>3.1.0.RELEASE</grpc-spring-boot-starter.version>
+		<grpc.version>1.63.0</grpc.version>
+		<protobuf-java.version>3.25.1</protobuf-java.version>
+		<protoc.version>3.23.4</protoc.version>
+		<protobuf-maven-plugin.version>0.6.1</protobuf-maven-plugin.version>
+		<os-maven-plugin.version>1.7.1</os-maven-plugin.version>
+		<!-- Avro -->
+		<avro.version>1.11.3</avro.version>
+		<!-- Kafka (клиенты и Streams; spring-kafka выбирается Spring Boot BOM) -->
+		<kafka-clients.version>3.6.1</kafka-clients.version>
 	</properties>
 
 	<dependencyManagement>
@@ -42,6 +60,56 @@
 				<version>${spring-cloud.version}</version>
 				<type>pom</type>
 				<scope>import</scope>
+			</dependency>
+			<!-- Общий контрактный модуль (gRPC-стабы + Avro-классы) -->
+			<dependency>
+				<groupId>ru.practicum</groupId>
+				<artifactId>stats-contract</artifactId>
+				<version>${project.version}</version>
+			</dependency>
+			<!-- gRPC + Protobuf -->
+			<dependency>
+				<groupId>net.devh</groupId>
+				<artifactId>grpc-spring-boot-starter</artifactId>
+				<version>${grpc-spring-boot-starter.version}</version>
+				<type>pom</type>
+				<scope>import</scope>
+			</dependency>
+			<dependency>
+				<groupId>net.devh</groupId>
+				<artifactId>grpc-server-spring-boot-starter</artifactId>
+				<version>${grpc-spring-boot-starter.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>net.devh</groupId>
+				<artifactId>grpc-client-spring-boot-starter</artifactId>
+				<version>${grpc-spring-boot-starter.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>io.grpc</groupId>
+				<artifactId>grpc-protobuf</artifactId>
+				<version>${grpc.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>io.grpc</groupId>
+				<artifactId>grpc-stub</artifactId>
+				<version>${grpc.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>io.grpc</groupId>
+				<artifactId>grpc-netty-shaded</artifactId>
+				<version>${grpc.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>com.google.protobuf</groupId>
+				<artifactId>protobuf-java</artifactId>
+				<version>${protobuf-java.version}</version>
+			</dependency>
+			<!-- Avro -->
+			<dependency>
+				<groupId>org.apache.avro</groupId>
+				<artifactId>avro</artifactId>
+				<version>${avro.version}</version>
 			</dependency>
 		</dependencies>
 	</dependencyManagement>
